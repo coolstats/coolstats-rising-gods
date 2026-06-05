@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r
+## Notes: Character stats, item levels, UwU Logs, cached gear/talents, player browser, and loot alerts.
+## Author: coolstats
+## Version: 0.2.0
+## SavedVariables: coolstatsDB
+## OptionalDeps: BonusScanner, GearScore
+
+coolstats_uwu_data.lua
+coolstats.lua
+coolstats_lootalert.lua
+coolstats_lootalert.xml
+coolstats_options.lua
+coolstats_tooltip.lua
+coolstats_player_menu.lua

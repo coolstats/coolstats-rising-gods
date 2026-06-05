@@ -1,0 +1,26 @@
+data/
+*.bak
+*.tmp
+*.log
+*.zip
+*.7z
+*.rar
+
+# Local screenshots/videos used while developing the addon.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.webm
+repo_images/
+
+# Unused source assets kept locally but not needed by the released addon.
+assets/achievement_legionpvptier4.blp
+assets/PVPCurrency-Honor-Alliance.blp
+assets/PVPCurrency-Honor-Horde.blp
+assets/toast-star.blp
+assets/toast-star-2.blp
+assets/toast-star-3.blp
+assets/UI-TradeSkill-Circle.blp
+assets/ui_garrison_follower_trait_learned_02.ogg
