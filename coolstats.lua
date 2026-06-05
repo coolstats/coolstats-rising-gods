@@ -5761,94 +5761,27 @@ local function InitializeUI()
 end
 
 local function ShowHelp()
-	Print("/coolstats - open the settings panel")
-	Print("/coolstats help - show slash commands")
-	Print("/coolstats characterpanel - toggle character panel features; requires reload")
-	Print("/coolstats panel - toggle the merged stats panel")
-	Print("/coolstats ilvl - toggle item-level badges")
-	Print("/coolstats itemlevels - open item-level badge settings")
-	Print("/coolstats borders - toggle slot glow coloring")
-	Print("/coolstats tooltip - toggle GearScore tooltip cleanup")
-	Print("/coolstats edit - toggle stat row editing")
-	Print("/coolstats favourites - toggle favourite stat picking")
-	Print("/coolstats popouts - toggle stat popout picking")
-	Print("/coolstats backgrounds - open panel background settings")
-	Print("/coolstats uwu [name], /uwu [name] - show the UwU Logs panel; also on right-click player menus")
-	Print("/coolstats reset - reset options and reload")
-end
-
-local function ToggleOption(optionKey, label)
-	db[optionKey] = not db[optionKey]
-	Print(label .. ": " .. (db[optionKey] and "|cff00ff00on|r" or "|cffff4040off|r"))
-	QueueUpdate()
+	Print("/coolstats or /cs - open settings")
+	Print("/coolstats settings - open settings")
+	Print("/coolstats browser - open the player browser")
+	Print("/coolstats uwu [player name] - open UwU Logs for a player")
 end
 
 local function SlashHandler(message)
 	local rawMessage = message or ""
 	local command, rest = match(rawMessage, "^(%S*)%s*(.-)$")
 	local commandLower = lower(command or "")
-	if commandLower == "" or commandLower == "options" or commandLower == "settings" then
+	if commandLower == "" or commandLower == "settings" then
 		if coolstats.OpenOptionsPanel then
 			coolstats.OpenOptionsPanel()
 		else
 			ShowHelp()
 		end
-	elseif commandLower == "help" then
-		ShowHelp()
-	elseif commandLower == "characterpanel" or commandLower == "charpanel" or commandLower == "features" then
-		coolstats.SetCharacterPanelEnabled(not coolstats.IsCharacterPanelEnabled(), true)
-	elseif commandLower == "panel" then
-		ToggleOption("showStatsPanel", "Stats panel")
-	elseif commandLower == "ilvl" or commandLower == "ilevel" or commandLower == "itemlevel" then
-		db.showItemLevels = not db.showItemLevels
-		if db.showItemLevels and db.itemLevelBadges and db.itemLevelBadges.position == "off" then
-			db.itemLevelBadges.position = defaults.itemLevelBadges.position
-		end
-		Print("Item levels: " .. (db.showItemLevels and "|cff00ff00on|r" or "|cffff4040off|r"))
-		QueueUpdate()
-	elseif commandLower == "itemlevels" or commandLower == "itemlevelsettings" or commandLower == "ilevels" then
-		if coolstats.OpenItemLevelOptionsPanel then
-			coolstats.OpenItemLevelOptionsPanel()
-		elseif coolstats.OpenOptionsPanel then
-			coolstats.OpenOptionsPanel()
+	elseif commandLower == "browser" then
+		if coolstats.OpenCachedPlayerBrowser then
+			coolstats.OpenCachedPlayerBrowser()
 		else
-			ShowHelp()
-		end
-	elseif commandLower == "borders" or commandLower == "border" then
-		ToggleOption("showSlotBorders", "Slot borders")
-	elseif commandLower == "tooltip" or commandLower == "tooltips" then
-		ToggleOption("cleanGearScoreTooltips", "GearScore tooltip cleanup")
-	elseif commandLower == "edit" or commandLower == "lock" then
-		db.editMode = not db.editMode
-		if db.editMode then
-			db.popoutMode = false
-			db.favoriteMode = false
-		end
-		Print("Stat row editing: " .. (db.editMode and "|cff00ff00on|r" or "|cffff4040off|r"))
-		QueueUpdate()
-	elseif commandLower == "favorite" or commandLower == "favorites" or commandLower == "favourite" or commandLower == "favourites" then
-		db.favoriteMode = not db.favoriteMode
-		if db.favoriteMode then
-			db.editMode = false
-			db.popoutMode = false
-		end
-		Print("Favourite stat picking: " .. (db.favoriteMode and "|cff00ff00on|r" or "|cffff4040off|r"))
-		QueueUpdate()
-	elseif commandLower == "popout" or commandLower == "popouts" or commandLower == "pin" then
-		db.popoutMode = not db.popoutMode
-		if db.popoutMode then
-			db.editMode = false
-			db.favoriteMode = false
-		end
-		Print("Stat popout picking: " .. (db.popoutMode and "|cff00ff00on|r" or "|cffff4040off|r"))
-		QueueUpdate()
-	elseif commandLower == "background" or commandLower == "backgrounds" then
-		if coolstats.OpenBackgroundOptionsPanel then
-			coolstats.OpenBackgroundOptionsPanel()
-		elseif coolstats.OpenOptionsPanel then
-			coolstats.OpenOptionsPanel()
-		else
-			ShowHelp()
+			Print("Player browser is not available.")
 		end
 	elseif commandLower == "uwu" then
 		local name = rest
@@ -5865,9 +5798,6 @@ local function SlashHandler(message)
 		else
 			Print("UwU Logs data module is not loaded.")
 		end
-	elseif commandLower == "reset" then
-		coolstatsDB = CopyDefaults({}, defaults)
-		ReloadUI()
 	else
 		ShowHelp()
 	end
@@ -5941,6 +5871,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 	if event == "PLAYER_LOGIN" then
 		coolstats.CreateMinimapButton()
 		InitializeUI()
+		local freshness = coolstats.FormatCachedPlayerBrowserGeneratedAt and coolstats.FormatCachedPlayerBrowserGeneratedAt() or "Last UwU logs refresh: unknown"
+		Print("|cff00ff00Loaded successfully.|r " .. freshness)
 		return
 	end
 

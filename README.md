@@ -96,6 +96,9 @@ requires a UI reload.
 4. Restart the game or run `/reload`.
 5. Left-click the coolstats minimap button to open the player browser.
 
+On login, coolstats confirms that it loaded successfully and shows the
+freshness date of the bundled UwU Logs data.
+
 Minimap controls:
 
 - **Left-click:** open the player browser.
@@ -117,23 +120,12 @@ Minimap controls:
 | Command | Action |
 | --- | --- |
 | `/coolstats` or `/cs` | Open settings |
-| `/coolstats help` | Show slash-command help |
-| `/coolstats uwu [name]` | Open UwU Logs for a player |
-| `/uwu [name]` | Shortcut for an UwU Logs lookup |
-| `/coolstats characterpanel` | Toggle character-panel features and reload |
-| `/coolstats panel` | Toggle the extended stats panel |
-| `/coolstats ilvl` | Toggle item-level badges |
-| `/coolstats itemlevels` | Open item-level badge settings |
-| `/coolstats borders` | Toggle equipment-slot border coloring |
-| `/coolstats tooltip` | Toggle GearScore tooltip cleanup |
-| `/coolstats edit` | Toggle stat-row editing |
-| `/coolstats favourites` | Toggle favourite-stat selection |
-| `/coolstats popouts` | Toggle stat-popout selection |
-| `/coolstats backgrounds` | Open background settings |
-| `/coolstats reset` | Reset options and reload the UI |
+| `/coolstats settings` | Open settings |
+| `/coolstats browser` | Open the player browser |
+| `/coolstats uwu [player name]` | Open UwU Logs for a player |
 
-If no name is supplied to `/uwu` or `/coolstats uwu`, the current target is
-used. If there is no target, coolstats uses your character.
+If no name is supplied to `/coolstats uwu`, the current target is used. If
+there is no target, coolstats uses your character.
 
 ## Settings And Optional Dependencies
 
