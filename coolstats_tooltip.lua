@@ -368,25 +368,38 @@ function coolstats.GetCachedTalentStore()
 	return coolstatsDB.cachedInspectTalents
 end
 
+function coolstats.CachedTalentGroupMatchesClass(group, classFile)
+	if not group or not classFile then
+		return true
+	end
+
+	local expectedClass = string.lower(string.gsub(tostring(classFile), "[^%a]", ""))
+	local sawBackground = false
+	for _, tab in ipairs(group.tabs or {}) do
+		local background = tab and tab.background
+		if background and background ~= "" then
+			sawBackground = true
+			background = string.lower(string.gsub(tostring(background), "[^%a]", ""))
+			if string.sub(background, 1, string.len(expectedClass)) ~= expectedClass then
+				return false
+			end
+		end
+	end
+	return sawBackground
+end
+
 function coolstats.CachedTalentSnapshotMatchesClass(snapshot)
 	if not snapshot or snapshot.missing then
 		return true
 	end
 
 	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
-	if not classFile then
-		return true
+	if not classFile or not snapshot.groups or #snapshot.groups == 0 then
+		return false
 	end
-	local expectedClass = string.lower(string.gsub(tostring(classFile), "[^%a]", ""))
-	for _, group in ipairs(snapshot.groups or {}) do
-		for _, tab in ipairs(group.tabs or {}) do
-			local background = tab and tab.background
-			if background and background ~= "" then
-				background = string.lower(string.gsub(tostring(background), "[^%a]", ""))
-				if string.sub(background, 1, string.len(expectedClass)) ~= expectedClass then
-					return false
-				end
-			end
+	for _, group in ipairs(snapshot.groups) do
+		if not coolstats.CachedTalentGroupMatchesClass(group, classFile) then
+			return false
 		end
 	end
 	return true
@@ -889,18 +902,29 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 			end
 		end
 		if rankedTalents > 0 or totalPoints > 0 then
-			totalRankedTalents = totalRankedTalents + rankedTalents
-			groups[#groups + 1] = {
+			local group = {
 				group = groupIndex,
 				active = groupIndex == activeGroup,
 				points = totalPoints,
 				tabs = tabs,
 			}
+			if coolstats.CachedTalentGroupMatchesClass(group, classFile) then
+				totalRankedTalents = totalRankedTalents + rankedTalents
+				groups[#groups + 1] = group
+			end
 		end
 	end
 
 	if #groups == 0 then
-		return nil
+		return nil, false
+	end
+
+	local activeGroupIndex = 1
+	for groupIndex = 1, #groups do
+		groups[groupIndex].active = groups[groupIndex].group == activeGroup
+		if groups[groupIndex].active then
+			activeGroupIndex = groupIndex
+		end
 	end
 
 	local store = coolstats.GetCachedTalentStore()
@@ -911,16 +935,16 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 		classIndex = classFile and UWU_CLASS_INDEX_BY_FILE[classFile] or player and player[3],
 		level = UnitLevel(unit),
 		seenAt = GetNowSeconds(),
-		activeGroup = activeGroup,
+		activeGroup = activeGroupIndex,
 		groups = groups,
 	}
 	if not coolstats.CachedTalentSnapshotMatchesClass(snapshot) then
-		return nil
+		return nil, false
 	end
 	store.players[key] = snapshot
 	coolstats.TouchCachedTalentKey(store, key)
 	coolstats.PruneCachedTalentCache(false)
-	return snapshot
+	return snapshot, #groups >= groupCount
 end
 
 local function CacheInspectGearForUnit(unit)
@@ -983,6 +1007,21 @@ local function CacheInspectGearForUnit(unit)
 	return snapshot
 end
 
+function coolstats.TrackInspectRequest(unit)
+	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
+		return
+	end
+	local name = UnitName(unit)
+	pendingGearInspectName = name and GetCachedGearKeyForName(name) or nil
+	pendingGearInspectGuid = UnitGUID and UnitGUID(unit) or nil
+	coolstats.pendingTalentInspectName = pendingGearInspectName
+	coolstats.pendingTalentInspectGuid = pendingGearInspectGuid
+	coolstats.pendingTalentCapture = nil
+	if coolstats.talentRetryFrame then
+		coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
+	end
+end
+
 local function RequestGearInspectForUnit(unit)
 	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
 		return false
@@ -994,11 +1033,16 @@ local function RequestGearInspectForUnit(unit)
 		return false
 	end
 
-	local name = UnitName(unit)
-	pendingGearInspectName = name and GetCachedGearKeyForName(name) or nil
-	pendingGearInspectGuid = UnitGUID and UnitGUID(unit) or nil
+	coolstats.TrackInspectRequest(unit)
 	NotifyInspect(unit)
 	return true
+end
+
+if hooksecurefunc and NotifyInspect and not coolstats.inspectNotifyHooked then
+	coolstats.inspectNotifyHooked = true
+	hooksecurefunc("NotifyInspect", function(unit)
+		coolstats.TrackInspectRequest(unit)
+	end)
 end
 
 function coolstats.FindInspectReadyUnit(guid, nameKey)
@@ -1037,6 +1081,92 @@ function coolstats.FindInspectReadyUnit(guid, nameKey)
 		end
 	end
 	return nil
+end
+
+function coolstats.QueueInspectTalentCapture(guid, nameKey)
+	if not guid and not nameKey then
+		return
+	end
+	local now = GetTime and GetTime() or 0
+	coolstats.pendingTalentInspectGuid = guid
+	coolstats.pendingTalentInspectName = nameKey
+	coolstats.pendingTalentCapture = {
+		guid = guid,
+		nameKey = nameKey,
+		nextAttempt = now + 0.15,
+		expiresAt = now + 3,
+	}
+	coolstats.talentRetryFrame = coolstats.talentRetryFrame or CreateFrame("Frame")
+	coolstats.talentRetryFrame:SetScript("OnUpdate", function()
+		coolstats.ProcessPendingInspectTalentCapture()
+	end)
+end
+
+function coolstats.ProcessPendingInspectTalentCapture()
+	local pending = coolstats.pendingTalentCapture
+	if not pending then
+		if coolstats.talentRetryFrame then
+			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
+		end
+		return
+	end
+	local now = GetTime and GetTime() or 0
+	if now < (pending.nextAttempt or 0) then
+		return
+	end
+
+	local unit = coolstats.FindInspectReadyUnit(pending.guid, pending.nameKey)
+	local snapshot, complete
+	if unit then
+		snapshot, complete = coolstats.CacheInspectTalentsForUnit(unit)
+	end
+	if snapshot then
+		if coolstats.RefreshCachedPlayerBrowser then
+			coolstats.RefreshCachedPlayerBrowser(true)
+		end
+		if coolstats.pendingCachedTalentsOpenName and coolstats.GetCachedTalentSnapshot(coolstats.pendingCachedTalentsOpenName) then
+			local pendingName = coolstats.pendingCachedTalentsOpenName
+			coolstats.pendingCachedTalentsOpenName = nil
+			coolstats.OpenCachedTalentsForName(pendingName)
+		end
+	end
+	if complete or now >= (pending.expiresAt or 0) then
+		coolstats.pendingTalentCapture = nil
+		coolstats.pendingTalentInspectGuid = nil
+		coolstats.pendingTalentInspectName = nil
+		if coolstats.talentRetryFrame then
+			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
+		end
+	else
+		pending.nextAttempt = now + 0.2
+	end
+end
+
+function coolstats.CaptureReadyInspectTalents(guid, nameKey)
+	local unit = coolstats.FindInspectReadyUnit(guid, nameKey)
+	if not unit then
+		return nil
+	end
+	local snapshot, complete = coolstats.CacheInspectTalentsForUnit(unit)
+	if snapshot and coolstats.RefreshCachedPlayerBrowser then
+		coolstats.RefreshCachedPlayerBrowser(true)
+	end
+	if snapshot and coolstats.pendingCachedTalentsOpenName and coolstats.GetCachedTalentSnapshot(coolstats.pendingCachedTalentsOpenName) then
+		local pendingName = coolstats.pendingCachedTalentsOpenName
+		coolstats.pendingCachedTalentsOpenName = nil
+		coolstats.OpenCachedTalentsForName(pendingName)
+	end
+	if complete then
+		coolstats.pendingTalentInspectGuid = nil
+		coolstats.pendingTalentInspectName = nil
+		coolstats.pendingTalentCapture = nil
+		if coolstats.talentRetryFrame then
+			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
+		end
+	else
+		coolstats.QueueInspectTalentCapture(guid or (UnitGUID and UnitGUID(unit)), nameKey or GetCachedGearKeyForName(UnitName(unit)))
+	end
+	return snapshot
 end
 
 local function TryCacheLookupGearFromUnit(unit, lookupKey)
@@ -5451,6 +5581,7 @@ end
 tooltipFrame:RegisterEvent("ADDON_LOADED")
 tooltipFrame:RegisterEvent("INSPECT_ACHIEVEMENT_READY")
 tooltipFrame:RegisterEvent("INSPECT_READY")
+tooltipFrame:RegisterEvent("INSPECT_TALENT_READY")
 tooltipFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
 tooltipFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 tooltipFrame:SetScript("OnEvent", function(self, event, ...)
@@ -5471,10 +5602,10 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 
 	if event == "INSPECT_READY" then
 		local inspectGuid = ...
-		local inspectUnit = coolstats.FindInspectReadyUnit(inspectGuid or pendingGearInspectGuid, pendingGearInspectName)
+		local inspectUnit = coolstats.FindInspectReadyUnit(inspectGuid or pendingGearInspectGuid, inspectGuid and nil or pendingGearInspectName)
 		if inspectUnit then
 			CacheInspectGearForUnit(inspectUnit)
-			coolstats.CacheInspectTalentsForUnit(inspectUnit)
+			coolstats.CaptureReadyInspectTalents(inspectGuid or coolstats.pendingTalentInspectGuid, GetCachedGearKeyForName(UnitName(inspectUnit)))
 		end
 		pendingGearInspectName = nil
 		pendingGearInspectGuid = nil
@@ -5490,6 +5621,10 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		end
 	end
 
+	if event == "INSPECT_TALENT_READY" then
+		coolstats.CaptureReadyInspectTalents(coolstats.pendingTalentInspectGuid, coolstats.pendingTalentInspectName)
+	end
+
 	if event == "PLAYER_TARGET_CHANGED" then
 		RequestGearInspectForUnit("target")
 		if lookupUwUPanel and lookupUwUPanel:IsShown() then
@@ -5497,7 +5632,7 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		end
 	end
 
-	if event == "INSPECT_READY" or event == "PLAYER_TARGET_CHANGED" then
+	if event == "INSPECT_READY" or event == "INSPECT_TALENT_READY" or event == "PLAYER_TARGET_CHANGED" then
 		UpdateInspectUwUPanel()
 		return
 	end
