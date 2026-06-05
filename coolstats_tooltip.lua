@@ -1016,10 +1016,6 @@ function coolstats.TrackInspectRequest(unit)
 	pendingGearInspectGuid = UnitGUID and UnitGUID(unit) or nil
 	coolstats.pendingTalentInspectName = pendingGearInspectName
 	coolstats.pendingTalentInspectGuid = pendingGearInspectGuid
-	coolstats.pendingTalentCapture = nil
-	if coolstats.talentRetryFrame then
-		coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
-	end
 end
 
 local function RequestGearInspectForUnit(unit)
@@ -1083,62 +1079,26 @@ function coolstats.FindInspectReadyUnit(guid, nameKey)
 	return nil
 end
 
-function coolstats.QueueInspectTalentCapture(guid, nameKey)
-	if not guid and not nameKey then
+function coolstats.UpdateVisibleCachedPlayerBrowserTalent(snapshot)
+	local panel = coolstats.cachedPlayerBrowser
+	if not snapshot or not panel or not panel:IsShown() or not panel.browserRows then
 		return
 	end
-	local now = GetTime and GetTime() or 0
-	coolstats.pendingTalentInspectGuid = guid
-	coolstats.pendingTalentInspectName = nameKey
-	coolstats.pendingTalentCapture = {
-		guid = guid,
-		nameKey = nameKey,
-		nextAttempt = now + 0.15,
-		expiresAt = now + 3,
-	}
-	coolstats.talentRetryFrame = coolstats.talentRetryFrame or CreateFrame("Frame")
-	coolstats.talentRetryFrame:SetScript("OnUpdate", function()
-		coolstats.ProcessPendingInspectTalentCapture()
-	end)
-end
-
-function coolstats.ProcessPendingInspectTalentCapture()
-	local pending = coolstats.pendingTalentCapture
-	if not pending then
-		if coolstats.talentRetryFrame then
-			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
+	local key = NormalizeName(snapshot.name)
+	for _, row in ipairs(panel.browserRows) do
+		if row.key == key then
+			if not row.hasTalents and panel.browserCounts then
+				panel.browserCounts.talents = (panel.browserCounts.talents or 0) + 1
+			end
+			row.hasTalents = true
+			row.talentsSeenAt = snapshot.seenAt
+			row.classFile = snapshot.classFile or row.classFile
+			row.classIndex = row.classIndex or snapshot.classIndex
+			if coolstats.PaintCachedPlayerBrowserRows then
+				coolstats.PaintCachedPlayerBrowserRows()
+			end
+			return
 		end
-		return
-	end
-	local now = GetTime and GetTime() or 0
-	if now < (pending.nextAttempt or 0) then
-		return
-	end
-
-	local unit = coolstats.FindInspectReadyUnit(pending.guid, pending.nameKey)
-	local snapshot, complete
-	if unit then
-		snapshot, complete = coolstats.CacheInspectTalentsForUnit(unit)
-	end
-	if snapshot then
-		if coolstats.RefreshCachedPlayerBrowser then
-			coolstats.RefreshCachedPlayerBrowser(true)
-		end
-		if coolstats.pendingCachedTalentsOpenName and coolstats.GetCachedTalentSnapshot(coolstats.pendingCachedTalentsOpenName) then
-			local pendingName = coolstats.pendingCachedTalentsOpenName
-			coolstats.pendingCachedTalentsOpenName = nil
-			coolstats.OpenCachedTalentsForName(pendingName)
-		end
-	end
-	if complete or now >= (pending.expiresAt or 0) then
-		coolstats.pendingTalentCapture = nil
-		coolstats.pendingTalentInspectGuid = nil
-		coolstats.pendingTalentInspectName = nil
-		if coolstats.talentRetryFrame then
-			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
-		end
-	else
-		pending.nextAttempt = now + 0.2
 	end
 end
 
@@ -1147,25 +1107,17 @@ function coolstats.CaptureReadyInspectTalents(guid, nameKey)
 	if not unit then
 		return nil
 	end
-	local snapshot, complete = coolstats.CacheInspectTalentsForUnit(unit)
-	if snapshot and coolstats.RefreshCachedPlayerBrowser then
-		coolstats.RefreshCachedPlayerBrowser(true)
+	local snapshot = coolstats.CacheInspectTalentsForUnit(unit)
+	if snapshot then
+		coolstats.UpdateVisibleCachedPlayerBrowserTalent(snapshot)
 	end
 	if snapshot and coolstats.pendingCachedTalentsOpenName and coolstats.GetCachedTalentSnapshot(coolstats.pendingCachedTalentsOpenName) then
 		local pendingName = coolstats.pendingCachedTalentsOpenName
 		coolstats.pendingCachedTalentsOpenName = nil
 		coolstats.OpenCachedTalentsForName(pendingName)
 	end
-	if complete then
-		coolstats.pendingTalentInspectGuid = nil
-		coolstats.pendingTalentInspectName = nil
-		coolstats.pendingTalentCapture = nil
-		if coolstats.talentRetryFrame then
-			coolstats.talentRetryFrame:SetScript("OnUpdate", nil)
-		end
-	else
-		coolstats.QueueInspectTalentCapture(guid or (UnitGUID and UnitGUID(unit)), nameKey or GetCachedGearKeyForName(UnitName(unit)))
-	end
+	coolstats.pendingTalentInspectGuid = nil
+	coolstats.pendingTalentInspectName = nil
 	return snapshot
 end
 
@@ -5605,7 +5557,6 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		local inspectUnit = coolstats.FindInspectReadyUnit(inspectGuid or pendingGearInspectGuid, inspectGuid and nil or pendingGearInspectName)
 		if inspectUnit then
 			CacheInspectGearForUnit(inspectUnit)
-			coolstats.CaptureReadyInspectTalents(inspectGuid or coolstats.pendingTalentInspectGuid, GetCachedGearKeyForName(UnitName(inspectUnit)))
 		end
 		pendingGearInspectName = nil
 		pendingGearInspectGuid = nil
