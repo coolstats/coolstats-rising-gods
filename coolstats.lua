@@ -4519,7 +4519,7 @@ function coolstats.CreateEditModeBanner(panel)
 
 	local banner = CreateFrame("Frame", "coolstatsEditModeBanner", panel)
 	ui.editModeBanner = banner
-	SetSize(banner, PANEL_WIDTH - 112, 18)
+	SetSize(banner, PANEL_WIDTH - 156, 18)
 	banner:SetPoint("TOP", panel, "TOP", 0, -7)
 	banner:SetFrameLevel(panel:GetFrameLevel() + 7)
 
@@ -4594,6 +4594,10 @@ end
 
 function coolstats.UpdateResetPanelButton()
 	SetVisible(ui.resetPanelButton, ui.panel and ui.panel:IsShown())
+end
+
+function coolstats.UpdateSettingsPanelButton()
+	SetVisible(ui.settingsPanelButton, ui.panel and ui.panel:IsShown())
 end
 
 function coolstats.CreateFavoriteModeButton(panel)
@@ -4672,6 +4676,43 @@ function coolstats.CreateResetPanelButton(panel)
 	icon:SetTexture("Interface\\Buttons\\UI-RotationLeft-Button-Up")
 	SetSize(icon, 15, 15)
 	icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+	button.icon = icon
+
+	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+	highlight:SetBlendMode("ADD")
+	highlight:SetAllPoints(button)
+end
+
+function coolstats.CreateSettingsPanelButton(panel)
+	if ui.settingsPanelButton or not panel then
+		return
+	end
+
+	local button = CreateFrame("Button", "coolstatsSettingsPanelButton", panel)
+	ui.settingsPanelButton = button
+	SetSize(button, 18, 18)
+	button:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -57, -8)
+	button:SetFrameLevel(panel:GetFrameLevel() + 8)
+	button:SetScript("OnClick", function()
+		GameTooltip:Hide()
+		coolstats.OpenSettingsFromMinimap()
+	end)
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Settings", 1, 0.82, 0.16)
+		GameTooltip:AddLine("Open coolstats settings.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	local icon = button:CreateTexture(nil, "OVERLAY")
+	icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+	SetSize(icon, 15, 15)
+	icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 	button.icon = icon
 
 	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
@@ -5161,6 +5202,7 @@ local function CreatePanel()
 	CreateToggleButton()
 	coolstats.CreateFavoriteModeButton(panel)
 	coolstats.CreateResetPanelButton(panel)
+	coolstats.CreateSettingsPanelButton(panel)
 	CreateEditButton(panel)
 	coolstats.CreateEditModeBanner(panel)
 	CreatePopoutModeButton(panel)
@@ -5210,6 +5252,7 @@ local function AnchorPanel()
 	CreateToggleButton()
 	coolstats.CreateFavoriteModeButton(ui.panel)
 	coolstats.CreateResetPanelButton(ui.panel)
+	coolstats.CreateSettingsPanelButton(ui.panel)
 	coolstats.CreateEditModeBanner(ui.panel)
 	CreateAppearanceToggles(ui.panel)
 	CreatePopoutModeButton(ui.panel)
@@ -5437,6 +5480,7 @@ local function HideCharacterPanelRuntime()
 	SetVisible(ui.popoutModeButton, false)
 	SetVisible(ui.favoriteModeButton, false)
 	SetVisible(ui.resetPanelButton, false)
+	SetVisible(ui.settingsPanelButton, false)
 	SetVisible(ui.editModeBanner, false)
 	SetVisible(ui.popoutOptionsMenu, false)
 	SetVisible(ui.inspectSummary, false)
@@ -5617,6 +5661,7 @@ local function UpdateAll()
 	UpdatePopoutModeButton()
 	coolstats.UpdateFavoriteModeButton()
 	coolstats.UpdateResetPanelButton()
+	coolstats.UpdateSettingsPanelButton()
 	coolstats.UpdateEditModeBanner()
 	coolstats.UpdatePopoutOptionsMenuVisibility()
 	UpdateAppearanceToggles()
