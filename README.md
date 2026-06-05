@@ -73,6 +73,8 @@ be represented accurately.
 
 ### Optional Character Panel Improvements
 
+![coolstats character panel](https://i.imgur.com/rJTGDsf.png)
+
 | Character stats panel | Pop-out mode |
 | --- | --- |
 | <img src="https://i.imgur.com/hEzocO6.png" alt="Custom coolstats character stats panel" width="320"> | <img src="https://i.imgur.com/nxFxYDo.png" alt="Custom stat pop-out mode" width="440"> |
