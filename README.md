@@ -15,6 +15,8 @@ cached.
 
 ### UwU Logs In Game
 
+![UwU Logs inside a player tooltip](https://i.imgur.com/n2PYD7q.png)
+
 - Bundled UwU Logs database containing the top-ranked players for each class.
 - Overall raid score, best rank, and specialization-specific parse data.
 - Individual boss parses directly inside player tooltips by holding `ALT`.
@@ -26,6 +28,8 @@ The logs database is bundled with each addon release. coolstats does not make
 web requests while the game is running.
 
 ### Player Browser
+
+![coolstats player browser](https://i.imgur.com/NakLDmq.png)
 
 The player browser brings all available player information into one searchable
 table:
@@ -42,6 +46,10 @@ table:
 - Clear the locally stored inspection cache from inside the browser.
 
 ### Cached Gear And Talents
+
+| Cached gear | Cached talents |
+| --- | --- |
+| ![Cached gear armory](https://i.imgur.com/C2z4SLy.png) | ![Cached talents](https://i.imgur.com/uTRNko9.png) |
 
 When a player is available within inspection range, clicking, inspecting, or
 looking them up can store a local snapshot of their equipment and talents.
@@ -61,6 +69,8 @@ gems, enchants, talents, buffs, and other character-specific modifiers may not
 be represented accurately.
 
 ### Optional Character Panel Improvements
+
+![Custom coolstats character panel](https://i.imgur.com/rJTGDsf.png)
 
 coolstats also includes an optional overhaul of the default character panel:
 
