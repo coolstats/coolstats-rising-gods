@@ -15,14 +15,16 @@ cached.
 
 ### UwU Logs In Game
 
-![UwU Logs inside a player tooltip](https://i.imgur.com/n2PYD7q.png)
+| Tooltip logs | Direct player lookup |
+| --- | --- |
+| <img src="https://i.imgur.com/n2PYD7q.png" alt="UwU Logs inside a player tooltip" width="460"> | <img src="https://i.imgur.com/c057HzR.png" alt="Direct UwU Logs lookup from a player menu" width="354"> |
 
 - Bundled UwU Logs database containing the top-ranked players for each class.
 - Overall raid score, best rank, and specialization-specific parse data.
 - Individual boss parses directly inside player tooltips by holding `ALT`.
 - Parse colors and specialization icons make results easy to scan.
 - Dedicated logs panels show every available specialization for a player.
-- UwU Logs action added to supported player right-click menus.
+- UwU Logs action added to supported player and chat-name right-click menus.
 
 The logs database is bundled with each addon release. coolstats does not make
 web requests while the game is running.
@@ -70,13 +72,15 @@ be represented accurately.
 
 ### Optional Character Panel Improvements
 
-![Custom coolstats character panel](https://i.imgur.com/rJTGDsf.png)
+| Character stats panel | Pop-out mode |
+| --- | --- |
+| <img src="https://i.imgur.com/hEzocO6.png" alt="Custom coolstats character stats panel" width="320"> | <img src="https://i.imgur.com/nxFxYDo.png" alt="Custom stat pop-out mode" width="440"> |
 
 coolstats also includes an optional overhaul of the default character panel:
 
 - Extended stats panel with GearScore, item level, ratings, durability, repair
   cost, movement speed, and additional class-relevant statistics.
-- Reorderable stat rows and configurable sections.
+- Reorderable stat rows and configurable sections with quick bulk toggles.
 - Favourite important statistics.
 - Detachable stat popouts.
 - Configurable backgrounds, opacity, zoom, contrast, and text palettes.

@@ -2214,6 +2214,14 @@ local function SetSectionEnabled(section, enabled)
 	else
 		db.hiddenSections[section.configKey] = true
 	end
+	for index = 1, #section.rows do
+		local row = section.rows[index]
+		if enabled then
+			db.hiddenRows[row.configKey] = nil
+		else
+			db.hiddenRows[row.configKey] = true
+		end
+	end
 end
 
 local function SetRowEnabled(row, enabled)
@@ -2223,6 +2231,9 @@ local function SetRowEnabled(row, enabled)
 	end
 	if enabled then
 		db.hiddenRows[row.configKey] = nil
+		if row.section and not row.section.isFavorites then
+			db.hiddenSections[row.section.configKey] = nil
+		end
 	else
 		db.hiddenRows[row.configKey] = true
 	end
