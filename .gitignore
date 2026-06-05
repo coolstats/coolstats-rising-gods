@@ -1,4 +1,8 @@
-data/
+data/*
+!data/logs/
+data/logs/*
+!data/logs/**/
+!data/logs/**/*.lua
 *.bak
 *.tmp
 *.log
