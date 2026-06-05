@@ -5022,7 +5022,7 @@ if type(coolstats) == "table" then
 
 		local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		title:SetPoint("TOP", panel, "TOP", 0, -14)
-		title:SetText("coolstats Player Browser")
+		title:SetText("coolstats")
 		title:SetTextColor(0.0, 0.75, 1.0)
 		panel.title = title
 

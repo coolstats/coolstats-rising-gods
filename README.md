@@ -1,4 +1,6 @@
-# coolstats
+<p align="center">
+  <img src="assets/coolstats_readme_title.svg" alt="coolstats" width="420">
+</p>
 
 **A faster way to understand a player before the pull.**
 
