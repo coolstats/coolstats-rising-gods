@@ -1,39 +1,149 @@
 # coolstats
 
-coolstats is a World of Warcraft addon that brings character stats, item context, cached inspections, talent snapshots, and raid-log lookups into one polished in-game toolkit.
+**A faster way to understand a player before the pull.**
 
-## Highlights
+coolstats brings UwU Logs lookups, a searchable player browser, cached gear and
+talent inspection, and an optional character-panel overhaul together inside the
+game.
 
-- Character stats panel with GearScore, equipped item level, ratings, durability, repair cost, and configurable layout.
-- Item-level badges and rarity borders on character and inspect equipment slots.
-- Raid-log tooltip context with score, best spec, boss parses, and alternate tooltip details.
-- Logs browser with search, class/spec filters, sorting, favourites, cached gear status, and cached talent status.
-- Cached gear armory view for players you have inspected or interacted with.
-- Cached talents viewer with spec switching and Blizzard-style talent tooltips when available.
-- Minimap launcher, player right-click integrations, and modern loot alert toasts.
+It is built for raid formation and pugging: instead of repeatedly leaving the
+game to look players up, you can quickly see their parses, rankings, available
+specializations, and any equipment or talent snapshots you have previously
+cached.
 
-The addon does not make web requests in-game. Raid-log data is bundled with the addon and refreshed through new addon builds.
+## Core Features
 
-## Installation
+### UwU Logs In Game
 
-1. Download this repository.
-2. Place the `coolstats` folder in `Interface/AddOns/`.
-3. Make sure `coolstats.toc` is directly inside the `coolstats` folder.
+- Bundled UwU Logs database containing the top-ranked players for each class.
+- Overall raid score, best rank, and specialization-specific parse data.
+- Individual boss parses directly inside player tooltips by holding `ALT`.
+- Parse colors and specialization icons make results easy to scan.
+- Dedicated logs panels show every available specialization for a player.
+- UwU Logs action added to supported player right-click menus.
+
+The logs database is bundled with each addon release. coolstats does not make
+web requests while the game is running.
+
+### Player Browser
+
+The player browser brings all available player information into one searchable
+table:
+
+- Search players by name with responsive, delayed filtering.
+- Filter by class, favourites, or main specialization.
+- Sort columns in ascending, descending, or default order.
+- View main spec, off spec, parses, best rank, and cache availability.
+- See whether logs, gear, and talents are available before opening a player.
+- Favourite players so they remain at the top of the default list.
+- Right-click players to whisper, invite, view cached talents, or favourite
+  them.
+- Open the normal logs and cached-armory panels by clicking a player.
+- Clear the locally stored inspection cache from inside the browser.
+
+### Cached Gear And Talents
+
+When a player is available within inspection range, clicking, inspecting, or
+looking them up can store a local snapshot of their equipment and talents.
+Those snapshots can then be viewed later, even when the player is no longer
+nearby.
+
+- Paperdoll-style cached gear view with item icons, rarity borders, and item
+  levels.
+- Cached GearScore, equipped item level, and implied combat ratings.
+- Cached talent builds with specialization backgrounds, rank indicators,
+  specialization switching, and Blizzard-style talent tooltips when available.
+- Up to 1,500 recent player snapshots are retained.
+- Snapshots older than 14 days are automatically removed.
+
+Cached gear statistics are estimates derived from item data. Some effects,
+gems, enchants, talents, buffs, and other character-specific modifiers may not
+be represented accurately.
+
+### Optional Character Panel Improvements
+
+coolstats also includes an optional overhaul of the default character panel:
+
+- Extended stats panel with GearScore, item level, ratings, durability, repair
+  cost, movement speed, and additional class-relevant statistics.
+- Reorderable stat rows and configurable sections.
+- Favourite important statistics.
+- Detachable stat popouts.
+- Configurable backgrounds, opacity, zoom, contrast, and text palettes.
+- Item-level badges and rarity-colored equipment-slot borders.
+- Cleaner item tooltips when GearScore is installed.
+- Configurable loot-alert toasts for looted items, roll wins, and crafts.
+
+Character-panel features can be disabled in settings while keeping the logs
+browser, tooltip parses, and lookup functionality enabled. Changing this option
+requires a UI reload.
+
+## Quick Start
+
+1. Download the repository as a ZIP and extract it.
+2. Place the addon folder inside `Interface/AddOns/`.
+3. Ensure the final path is `Interface/AddOns/coolstats/coolstats.toc`.
 4. Restart the game or run `/reload`.
+5. Left-click the coolstats minimap button to open the player browser.
+
+Minimap controls:
+
+- **Left-click:** open the player browser.
+- **Right-click:** open the coolstats menu.
+- **Left-click and drag:** move the minimap button.
+
+## Using Player Data
+
+- **Hover a player:** view their overall UwU Logs result.
+- **Hold `ALT` while hovering:** view individual boss parses.
+- **Right-click a supported player name:** open their UwU Logs panel.
+- **Click a player in the browser:** open their logs and cached gear.
+- **Right-click a browser row:** whisper, invite, view talents, or favourite.
+- **Inspect or interact with a nearby player:** update their local gear and
+  talent snapshots when inspection data is available.
 
 ## Commands
 
-- `/coolstats` or `/cs` shows help.
-- `/coolstats panel` toggles the character stats panel.
-- `/coolstats ilvl` toggles item-level badges.
-- `/coolstats borders` toggles slot rarity borders.
-- `/coolstats tooltip` toggles tooltip cleanup.
-- `/coolstats uwu [name]` opens raid-log details for a player.
-- `/uwu [name]` is a shortcut for raid-log lookup.
-- `/coolstats reset` resets options and reloads the UI.
+| Command | Action |
+| --- | --- |
+| `/coolstats` or `/cs` | Open settings |
+| `/coolstats help` | Show slash-command help |
+| `/coolstats uwu [name]` | Open UwU Logs for a player |
+| `/uwu [name]` | Shortcut for an UwU Logs lookup |
+| `/coolstats characterpanel` | Toggle character-panel features and reload |
+| `/coolstats panel` | Toggle the extended stats panel |
+| `/coolstats ilvl` | Toggle item-level badges |
+| `/coolstats itemlevels` | Open item-level badge settings |
+| `/coolstats borders` | Toggle equipment-slot border coloring |
+| `/coolstats tooltip` | Toggle GearScore tooltip cleanup |
+| `/coolstats edit` | Toggle stat-row editing |
+| `/coolstats favourites` | Toggle favourite-stat selection |
+| `/coolstats popouts` | Toggle stat-popout selection |
+| `/coolstats backgrounds` | Open background settings |
+| `/coolstats reset` | Reset options and reload the UI |
 
-## Notes
+If no name is supplied to `/uwu` or `/coolstats uwu`, the current target is
+used. If there is no target, coolstats uses your character.
 
-- GearScore and BonusScanner are optional dependencies. coolstats will use them when available.
-- Cached gear and talent data are best-effort snapshots from players you have inspected or interacted with.
-- Implied cached-gear ratings may not include every gem/enchant edge case.
+## Settings And Optional Dependencies
+
+Most visual and quality-of-life features can be configured or disabled from
+the coolstats settings panel.
+
+- **GearScore:** optional; used when available for GearScore calculations and
+  coloring.
+- **BonusScanner:** optional; used when available for additional item-stat
+  information.
+
+## Data And Privacy
+
+- coolstats does not make web requests or send telemetry from inside the game.
+- Bundled logs are updated by installing a newer addon release.
+- Cached gear, talents, favourites, and settings are stored locally in
+  `coolstatsDB`.
+- Cached inspection data can be cleared from the player browser.
+
+## Support
+
+Use the blue **HELP** button inside the player browser to begin an in-game
+whisper to **Jumpscared** for questions, suggestions, or bug reports.
