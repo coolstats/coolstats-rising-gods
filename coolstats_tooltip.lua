@@ -368,6 +368,30 @@ function coolstats.GetCachedTalentStore()
 	return coolstatsDB.cachedInspectTalents
 end
 
+function coolstats.CachedTalentSnapshotMatchesClass(snapshot)
+	if not snapshot or snapshot.missing then
+		return true
+	end
+
+	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
+	if not classFile then
+		return true
+	end
+	local expectedClass = string.lower(string.gsub(tostring(classFile), "[^%a]", ""))
+	for _, group in ipairs(snapshot.groups or {}) do
+		for _, tab in ipairs(group.tabs or {}) do
+			local background = tab and tab.background
+			if background and background ~= "" then
+				background = string.lower(string.gsub(tostring(background), "[^%a]", ""))
+				if string.sub(background, 1, string.len(expectedClass)) ~= expectedClass then
+					return false
+				end
+			end
+		end
+	end
+	return true
+end
+
 local function PruneCachedGearCache(force)
 	local now = GetNowSeconds()
 	if not force and now - lastCachedGearPruneAt < RAID_PROGRESS_PRUNE_INTERVAL_SECONDS then
@@ -381,7 +405,7 @@ local function PruneCachedGearCache(force)
 	for index = #order, 1, -1 do
 		local key = order[index]
 		local snapshot = key and players[key]
-		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+		if not key or not snapshot or not coolstats.CachedTalentSnapshotMatchesClass(snapshot) or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
 			if key then
 				players[key] = nil
 			end
@@ -479,7 +503,17 @@ end
 function coolstats.GetCachedTalentSnapshot(name)
 	local key = GetCachedGearKeyForName(name)
 	local store = key and coolstats.GetCachedTalentStore()
-	return store and store.players[key] or nil
+	local snapshot = store and store.players[key] or nil
+	if snapshot and not coolstats.CachedTalentSnapshotMatchesClass(snapshot) then
+		store.players[key] = nil
+		for index = #store.order, 1, -1 do
+			if store.order[index] == key then
+				table.remove(store.order, index)
+			end
+		end
+		return nil
+	end
+	return snapshot
 end
 
 local function FormatCachedGearDateTime(seenAt)
@@ -875,6 +909,9 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 		activeGroup = activeGroup,
 		groups = groups,
 	}
+	if not coolstats.CachedTalentSnapshotMatchesClass(snapshot) then
+		return nil
+	end
 	store.players[key] = snapshot
 	coolstats.TouchCachedTalentKey(store, key)
 	coolstats.PruneCachedTalentCache(false)
@@ -885,8 +922,6 @@ local function CacheInspectGearForUnit(unit)
 	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
 		return nil
 	end
-
-	coolstats.CacheInspectTalentsForUnit(unit)
 
 	local name, realm = UnitName(unit)
 	if not name then
@@ -943,18 +978,6 @@ local function CacheInspectGearForUnit(unit)
 	return snapshot
 end
 
-local function CacheInspectGearForKnownUnits()
-	local snapshot = CacheInspectGearForUnit("mouseover")
-	if snapshot then
-		return snapshot
-	end
-	snapshot = CacheInspectGearForUnit("target")
-	if snapshot then
-		return snapshot
-	end
-	return CacheInspectGearForUnit(GetInspectUwUUnit and GetInspectUwUUnit() or nil)
-end
-
 local function RequestGearInspectForUnit(unit)
 	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
 		return false
@@ -971,6 +994,44 @@ local function RequestGearInspectForUnit(unit)
 	pendingGearInspectGuid = UnitGUID and UnitGUID(unit) or nil
 	NotifyInspect(unit)
 	return true
+end
+
+function coolstats.FindInspectReadyUnit(guid, nameKey)
+	local function Matches(unit)
+		if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
+			return false
+		end
+		if guid and UnitGUID and UnitGUID(unit) ~= guid then
+			return false
+		end
+		if nameKey and GetCachedGearKeyForName(UnitName(unit)) ~= nameKey then
+			return false
+		end
+		return guid ~= nil or nameKey ~= nil
+	end
+
+	local inspectUnit = GetInspectUwUUnit and GetInspectUwUUnit()
+	if Matches(inspectUnit) then
+		return inspectUnit
+	end
+	for _, unit in ipairs({ "mouseover", "target", "focus", "player" }) do
+		if Matches(unit) then
+			return unit
+		end
+	end
+	for index = 1, 4 do
+		local unit = "party" .. index
+		if Matches(unit) then
+			return unit
+		end
+	end
+	for index = 1, 40 do
+		local unit = "raid" .. index
+		if Matches(unit) then
+			return unit
+		end
+	end
+	return nil
 end
 
 local function TryCacheLookupGearFromUnit(unit, lookupKey)
@@ -1035,15 +1096,20 @@ function coolstats.TryCacheLookupTalentsFromUnit(unit, lookupKey)
 		return nil, false
 	end
 
-	local snapshot = coolstats.CacheInspectTalentsForUnit(unit)
-	local requested = RequestGearInspectForUnit(unit)
-	return snapshot, requested
+	if UnitIsUnit and UnitIsUnit(unit, "player") then
+		return coolstats.CacheInspectTalentsForUnit(unit), false
+	end
+	return nil, RequestGearInspectForUnit(unit)
 end
 
 function coolstats.CacheTalentsForLookupName(name)
 	local lookupKey = GetCachedGearKeyForName(name)
 	if not lookupKey then
 		return nil, false
+	end
+	local cached = coolstats.GetCachedTalentSnapshot(name)
+	if cached then
+		return cached, false
 	end
 
 	local inspectUnit = GetInspectUwUUnit and GetInspectUwUUnit()
@@ -5394,24 +5460,11 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	end
 
 	if event == "INSPECT_READY" then
-		if pendingGearInspectGuid and UnitGUID then
-			if UnitExists("mouseover") and UnitGUID("mouseover") == pendingGearInspectGuid then
-				CacheInspectGearForUnit("mouseover")
-			elseif UnitExists("target") and UnitGUID("target") == pendingGearInspectGuid then
-				CacheInspectGearForUnit("target")
-			else
-				CacheInspectGearForKnownUnits()
-			end
-		elseif pendingGearInspectName then
-			if UnitExists("mouseover") and GetCachedGearKeyForName(UnitName("mouseover")) == pendingGearInspectName then
-				CacheInspectGearForUnit("mouseover")
-			elseif UnitExists("target") and GetCachedGearKeyForName(UnitName("target")) == pendingGearInspectName then
-				CacheInspectGearForUnit("target")
-			else
-				CacheInspectGearForKnownUnits()
-			end
-		else
-			CacheInspectGearForKnownUnits()
+		local inspectGuid = ...
+		local inspectUnit = coolstats.FindInspectReadyUnit(inspectGuid or pendingGearInspectGuid, pendingGearInspectName)
+		if inspectUnit then
+			CacheInspectGearForUnit(inspectUnit)
+			coolstats.CacheInspectTalentsForUnit(inspectUnit)
 		end
 		pendingGearInspectName = nil
 		pendingGearInspectGuid = nil
@@ -5428,7 +5481,6 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	end
 
 	if event == "PLAYER_TARGET_CHANGED" then
-		CacheInspectGearForUnit("target")
 		RequestGearInspectForUnit("target")
 		if lookupUwUPanel and lookupUwUPanel:IsShown() then
 			UpdateCachedGearPanel(lookupUwUPanel, lookupUwUPanel.renderName, lookupUwUPanel.renderPlayer)
