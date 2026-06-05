@@ -3798,6 +3798,46 @@ if type(coolstats) == "table" then
 		return "Last UwU logs refresh: " .. generatedAt
 	end
 
+	function coolstats.GetUwULogsDataAgeDays()
+		local generatedAt = coolstatsUwUData and coolstatsUwUData.generatedAt
+		if type(generatedAt) ~= "string" or generatedAt == "" or type(date) ~= "function" then
+			return nil
+		end
+		local year, month, day, hour, minute = string.match(generatedAt, "^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d)")
+		if not year or not month or not day or not hour or not minute then
+			return nil
+		end
+		local ok, current = pcall(date, "!*t")
+		if not ok or type(current) ~= "table" then
+			return nil
+		end
+		local function MinuteStamp(stampYear, stampMonth, stampDay, stampHour, stampMinute)
+			stampYear = tonumber(stampYear)
+			stampMonth = tonumber(stampMonth)
+			stampDay = tonumber(stampDay)
+			stampHour = tonumber(stampHour)
+			stampMinute = tonumber(stampMinute)
+			if not stampYear or not stampMonth or not stampDay or not stampHour or not stampMinute then
+				return nil
+			end
+			local days = 0
+			for checkedYear = 1970, stampYear - 1 do
+				days = days + (coolstats.IsCachedPlayerBrowserLeapYear(checkedYear) and 366 or 365)
+			end
+			for checkedMonth = 1, stampMonth - 1 do
+				days = days + coolstats.GetCachedPlayerBrowserDaysInMonth(stampYear, checkedMonth)
+			end
+			days = days + stampDay - 1
+			return (days * 1440) + (stampHour * 60) + stampMinute
+		end
+		local generatedMinutes = MinuteStamp(year, month, day, hour, minute)
+		local currentMinutes = MinuteStamp(current.year, current.month, current.day, current.hour, current.min)
+		if not generatedMinutes or not currentMinutes then
+			return nil
+		end
+		return math.max(0, math.floor((currentMinutes - generatedMinutes) / 1440))
+	end
+
 	function coolstats.GetCachedPlayerBrowserSpecKey(classIndex, specIndex)
 		if classIndex == nil or specIndex == nil then
 			return nil

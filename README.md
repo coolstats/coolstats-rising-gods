@@ -19,7 +19,8 @@ cached.
 | --- | --- |
 | <img src="https://i.imgur.com/n2PYD7q.png" alt="UwU Logs inside a player tooltip" width="460"> | <img src="https://i.imgur.com/c057HzR.png" alt="Direct UwU Logs lookup from a player menu" width="354"> |
 
-- Bundled UwU Logs database containing the top-ranked players for each class.
+- Bundled UwU Logs database containing up to the top 500 players for every
+  class specialization.
 - Overall raid score, best rank, and specialization-specific parse data.
 - Individual boss parses directly inside player tooltips by holding `ALT`.
 - Parse colors and specialization icons make results easy to scan.
@@ -101,7 +102,8 @@ requires a UI reload.
 5. Left-click the coolstats minimap button to open the player browser.
 
 On login, coolstats confirms that it loaded successfully and shows the
-freshness date of the bundled UwU Logs data.
+freshness date of the bundled UwU Logs data. If the data is more than seven
+days old, the addon displays a red update warning.
 
 Minimap controls:
 
@@ -136,10 +138,14 @@ there is no target, coolstats uses your character.
 Most visual and quality-of-life features can be configured or disabled from
 the coolstats settings panel.
 
-- **GearScore:** optional; used when available for GearScore calculations and
-  coloring.
-- **BonusScanner:** optional; used when available for additional item-stat
-  information.
+- **GearScore:** optional. coolstats includes its own GearScore calculation;
+  installing GearScore additionally enables compatibility and tooltip-cleanup
+  behavior.
+- **BonusScanner:** optional. Without it, the addon still works normally, but
+  some detailed gear-contribution lines in stat tooltips are unavailable.
+
+Neither dependency is required for logs, the player browser, cached gear and
+talents, loot alerts, or the character-panel improvements.
 
 ## Data And Privacy
 

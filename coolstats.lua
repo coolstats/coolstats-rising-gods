@@ -5883,7 +5883,13 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 		coolstats.CreateMinimapButton()
 		InitializeUI()
 		local freshness = coolstats.FormatCachedPlayerBrowserGeneratedAt and coolstats.FormatCachedPlayerBrowserGeneratedAt() or "Last UwU logs refresh: unknown"
-		Print("|cff00ff00Loaded successfully.|r " .. freshness)
+		local dataAgeDays = coolstats.GetUwULogsDataAgeDays and coolstats.GetUwULogsDataAgeDays()
+		if dataAgeDays and dataAgeDays > 7 then
+			local ageLabel = tostring(dataAgeDays) .. (dataAgeDays == 1 and " day" or " days")
+			Print("|cff00ff00Loaded successfully.|r |cffff4040" .. freshness .. ". Please update your addon; parse data is outdated by " .. ageLabel .. ".|r")
+		else
+			Print("|cff00ff00Loaded successfully.|r " .. freshness)
+		end
 		return
 	end
 
