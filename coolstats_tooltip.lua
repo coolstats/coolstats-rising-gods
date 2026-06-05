@@ -405,7 +405,7 @@ local function PruneCachedGearCache(force)
 	for index = #order, 1, -1 do
 		local key = order[index]
 		local snapshot = key and players[key]
-		if not key or not snapshot or not coolstats.CachedTalentSnapshotMatchesClass(snapshot) or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
 			if key then
 				players[key] = nil
 			end
@@ -457,6 +457,11 @@ function coolstats.PruneCachedTalentCache(force)
 	local store = coolstats.GetCachedTalentStore()
 	local players = store.players
 	local order = store.order
+	for key, snapshot in pairs(players) do
+		if not snapshot or not coolstats.CachedTalentSnapshotMatchesClass(snapshot) or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+			players[key] = nil
+		end
+	end
 	for index = #order, 1, -1 do
 		local key = order[index]
 		local snapshot = key and players[key]
@@ -4073,6 +4078,7 @@ if type(coolstats) == "table" then
 
 	function coolstats.GetCachedPlayerBrowserRows(filterText, panel)
 		PruneCachedGearCache(false)
+		coolstats.PruneCachedTalentCache(false)
 		local filterKey = NormalizeName(filterText or "")
 		local classFilter = panel and panel.browserClassFilter
 		local specFilterKey = panel and panel.browserSpecFilterKey
@@ -4149,7 +4155,7 @@ if type(coolstats) == "table" then
 		local talentStore = coolstats.GetCachedTalentStore()
 		if talentStore and talentStore.players then
 			for key, snapshot in pairs(talentStore.players) do
-				local row = snapshot and GetRow(key, snapshot.name)
+				local row = snapshot and coolstats.CachedTalentSnapshotMatchesClass(snapshot) and GetRow(key, snapshot.name)
 				if row then
 					row.hasTalents = true
 					row.name = snapshot.name or row.name
@@ -4860,12 +4866,16 @@ if type(coolstats) == "table" then
 		store.players = {}
 		store.order = {}
 		lastCachedGearPruneAt = 0
+		local talentStore = coolstats.GetCachedTalentStore()
+		talentStore.players = {}
+		talentStore.order = {}
+		coolstats.lastCachedTalentPruneAt = 0
 		if lookupUwUPanel and lookupUwUPanel:IsShown() then
 			UpdateCachedGearPanel(lookupUwUPanel, lookupUwUPanel.renderName, lookupUwUPanel.renderPlayer)
 		end
 		coolstats.RefreshCachedPlayerBrowser(true)
 		if DEFAULT_CHAT_FRAME then
-			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r cached gear cleared.")
+			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r cached gear and talents cleared.")
 		end
 	end
 
@@ -4876,7 +4886,7 @@ if type(coolstats) == "table" then
 		end
 		if not StaticPopupDialogs["COOLSTATS_CLEAR_CACHED_GEAR"] then
 			StaticPopupDialogs["COOLSTATS_CLEAR_CACHED_GEAR"] = {
-				text = "Clear all cached gear?\n\nUwU logs data will stay intact.",
+				text = "Clear all cached gear and talents?\n\nLogs data will stay intact.",
 				button1 = YES or "Yes",
 				button2 = NO or "No",
 				OnAccept = function()
