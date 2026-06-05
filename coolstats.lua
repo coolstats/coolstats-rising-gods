@@ -2855,7 +2855,16 @@ function coolstats.ResetCharacterPanel()
 		end
 	end
 	ui.statPopouts = {}
+	local preservedData = {}
+	for key, value in pairs(coolstatsDB or {}) do
+		if defaults[key] == nil then
+			preservedData[key] = value
+		end
+	end
 	coolstatsDB = CopyDefaults({}, defaults)
+	for key, value in pairs(preservedData) do
+		coolstatsDB[key] = value
+	end
 	db = coolstatsDB
 	EnsureEditOptions()
 	coolstats.RestoreDefaultSectionOrder()
@@ -2868,7 +2877,7 @@ function coolstats.ResetCharacterPanel()
 			end
 		end
 	end
-	Print("Character panel reset.")
+	Print("Character panel reset. Cached player data preserved.")
 	QueueUpdate()
 end
 
@@ -2879,7 +2888,7 @@ function coolstats.ShowResetPanelConfirm()
 	end
 	if not StaticPopupDialogs["COOLSTATS_RESET_CHARACTER_PANEL"] then
 		StaticPopupDialogs["COOLSTATS_RESET_CHARACTER_PANEL"] = {
-			text = "Are you sure you would like to reset your character panel?",
+			text = "Are you sure you would like to reset your character panel?\n\nCached gear, talents, and browser favorites will be preserved.",
 			button1 = YES or "Yes",
 			button2 = NO or "No",
 			OnAccept = function()
