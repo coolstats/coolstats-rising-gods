@@ -101,7 +101,7 @@ requires a UI reload.
 
 ## Quick Start
 
-1. Download the repository as a ZIP and extract it.
+1. Download the latest install-ready ZIP from the GitHub Releases page.
 2. Place the addon folder inside `Interface/AddOns/`.
 3. Ensure the final path is `Interface/AddOns/coolstats/coolstats.toc`.
 4. Restart the game or run `/reload`.
