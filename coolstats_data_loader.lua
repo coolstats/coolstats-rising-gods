@@ -38,13 +38,7 @@ local function DataMatchesCurrentRealm(data, realmKey)
 		return false
 	end
 
-	local dataRealmKey = GetDataRealmKey(data)
-	if dataRealmKey == realmKey then
-		return true
-	end
-
-	-- Older bundled datasets used this placeholder and were Onyxia-only.
-	return dataRealmKey == "realm" and realmKey == "onyxia"
+	return GetDataRealmKey(data) == realmKey
 end
 
 local function SetRealmDataStatus(loaded, reason, addonName)
@@ -82,6 +76,8 @@ function coolstats.EnsureRealmDataLoaded()
 	local realmKey = GetCurrentRealmKey()
 	local addonName = REALM_DATA_ADDONS[realmKey]
 
+	-- The core addon never owns logs data. Discard anything another addon
+	-- exposed unless it explicitly belongs to the current realm.
 	if DataMatchesCurrentRealm(coolstatsUwUData, realmKey) then
 		SetRealmDataStatus(true, "loaded", addonName)
 		return true
@@ -116,10 +112,19 @@ function coolstats.EnsureRealmDataLoaded()
 	return false, reason or "realm-data-missing"
 end
 
+-- Never let stale or eagerly loaded data survive until realm validation.
+coolstatsUwUData = nil
+
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", function(_, _, loadedAddonName)
-	if loadedAddonName == ADDON_NAME then
+loader:RegisterEvent("PLAYER_LOGIN")
+loader:RegisterEvent("PLAYER_ENTERING_WORLD")
+loader:SetScript("OnEvent", function(_, event, loadedAddonName)
+	if event == "ADDON_LOADED" and loadedAddonName ~= ADDON_NAME then
+		return
+	end
+
+	if not coolstats.realmDataStatus or not coolstats.realmDataStatus.loaded then
 		coolstats.EnsureRealmDataLoaded()
 	end
 end)

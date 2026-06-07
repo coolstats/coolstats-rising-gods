@@ -102,8 +102,9 @@ requires a UI reload.
 ## Quick Start
 
 1. Download the latest install-ready ZIP from the GitHub Releases page.
-2. Place the addon folder inside `Interface/AddOns/`.
-3. Ensure the final path is `Interface/AddOns/coolstats/coolstats.toc`.
+2. Extract every included addon folder into `Interface/AddOns/`.
+3. Ensure `Interface/AddOns/coolstats/coolstats.toc` and the included
+   `Interface/AddOns/coolstats_Data_<Realm>/` folders exist.
 4. Restart the game or run `/reload`.
 5. Left-click the coolstats minimap button to open the player browser.
 

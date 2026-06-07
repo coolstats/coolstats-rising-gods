@@ -1,0 +1,14 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Onyxia
+## Notes: Realm-specific UwU Logs data for Onyxia.
+## Author: coolstats
+## Version: 0.2.7
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats
+## X-coolstats-Realm: Onyxia
+## X-coolstats-Phase: ulduar
+
+data\logs\ulduar\coolstats_uwu_data.lua
+data\logs\ulduar\coolstats_uwu_data_01.lua
+data\logs\ulduar\coolstats_uwu_data_02.lua

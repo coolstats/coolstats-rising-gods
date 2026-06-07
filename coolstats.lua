@@ -1,6 +1,6 @@
 local ADDON_NAME = ...
 
-local coolstats = {}
+local coolstats = _G.coolstats or {}
 _G.coolstats = coolstats
 
 local floor = math.floor
@@ -5934,6 +5934,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 	end
 
 	if event == "PLAYER_LOGIN" then
+		if coolstats.EnsureRealmDataLoaded then
+			coolstats.EnsureRealmDataLoaded()
+		end
 		coolstats.CreateMinimapButton()
 		InitializeUI()
 		local freshness = coolstats.FormatCachedPlayerBrowserGeneratedAt and coolstats.FormatCachedPlayerBrowserGeneratedAt() or "Last UwU logs refresh: unknown"

@@ -66,9 +66,6 @@ $runtimeFiles += Get-ChildItem -LiteralPath (Join-Path $publishPath "assets") -F
 	Where-Object { $_.Extension -match "^\.(blp|ogg)$" } |
 	ForEach-Object { "assets/" + $_.Name }
 
-$runtimeFiles += Get-ChildItem -LiteralPath (Join-Path $publishPath "data\logs") -Recurse -File -Filter "*.lua" |
-	ForEach-Object { $_.FullName.Substring($publishPath.Length + 1).Replace("\", "/") }
-
 foreach ($relativePath in $runtimeFiles | Sort-Object -Unique) {
 	$sourcePath = Join-Path $publishPath ($relativePath.Replace("/", "\"))
 	if (-not (Test-Path -LiteralPath $sourcePath)) {

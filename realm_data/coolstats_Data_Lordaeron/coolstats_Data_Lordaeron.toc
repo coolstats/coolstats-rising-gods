@@ -1,0 +1,14 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Lordaeron
+## Notes: Realm-specific UwU Logs data for Lordaeron.
+## Author: coolstats
+## Version: 0.2.7
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats
+## X-coolstats-Realm: Lordaeron
+## X-coolstats-Phase: icc
+
+data\logs\icc\coolstats_uwu_data.lua
+data\logs\icc\coolstats_uwu_data_01.lua
+data\logs\icc\coolstats_uwu_data_02.lua

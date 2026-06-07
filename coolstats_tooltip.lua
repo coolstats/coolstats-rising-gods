@@ -53,7 +53,7 @@ local UWU_RAID_PHASES = {
 }
 
 local UWU_INSPECT_PANEL_WIDTH = 318
-local UWU_INSPECT_PANEL_HEIGHT = 452
+local UWU_INSPECT_PANEL_HEIGHT = 460
 local UWU_INSPECT_ROW_HEIGHT = 15
 local UWU_INSPECT_ROW_COUNT = 27
 local UWU_INSPECT_ROW_WIDTH = 292
@@ -233,6 +233,15 @@ local UWU_BOSS_SHORT_NAMES = {
 	["General Vezax"] = "Vezax",
 	["Algalon the Observer"] = "Algalon",
 	["Emalon the Storm Watcher"] = "Emalon",
+	["Lord Marrowgar"] = "Marrowgar",
+	["Lady Deathwhisper"] = "Deathwhisper",
+	["Deathbringer Saurfang"] = "Saurfang",
+	["Professor Putricide"] = "Putricide",
+	["Blood Prince Council"] = "Blood Council",
+	["Blood-Queen Lana'thel"] = "Lana'thel",
+	["Blood Queen Lana'thel"] = "Lana'thel",
+	["Valithria Dreamwalker"] = "Dreamwalker",
+	["Toravon the Ice Watcher"] = "Toravon",
 }
 
 local UWU_HARD_MODE_ICON = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_8:0|t"
@@ -446,6 +455,27 @@ local function NormalizeName(name)
 	return name
 end
 
+function coolstats.NormalizeCachedPlayerRealmKey(realm)
+	realm = string.lower(tostring(realm or ""))
+	return string.gsub(realm, "[^%a%d]", "")
+end
+
+function coolstats.GetCurrentCachedPlayerRealmKey()
+	local realmKey = coolstats.GetCurrentRealmKey and coolstats.GetCurrentRealmKey()
+	realmKey = coolstats.NormalizeCachedPlayerRealmKey(realmKey or (GetRealmName and GetRealmName()) or "")
+	if realmKey == "" then
+		return "unknown"
+	end
+	return realmKey
+end
+
+function coolstats.GetCachedPlayerSnapshotRealmName(realm)
+	if realm and realm ~= "" then
+		return realm
+	end
+	return GetRealmName and GetRealmName() or ""
+end
+
 local function GetUnitCacheKey(unit)
 	if UnitGUID then
 		local guid = UnitGUID(unit)
@@ -491,22 +521,77 @@ local function EnsureTooltipDatabase()
 	coolstatsDB.tooltip = coolstatsDB.tooltip or {}
 	coolstatsDB.tooltip.raidProgress = nil
 	coolstatsDB.cachedInspectGear = coolstatsDB.cachedInspectGear or {}
-	coolstatsDB.cachedInspectGear.players = coolstatsDB.cachedInspectGear.players or {}
-	coolstatsDB.cachedInspectGear.order = coolstatsDB.cachedInspectGear.order or {}
 	coolstatsDB.cachedInspectTalents = coolstatsDB.cachedInspectTalents or {}
-	coolstatsDB.cachedInspectTalents.players = coolstatsDB.cachedInspectTalents.players or {}
-	coolstatsDB.cachedInspectTalents.order = coolstatsDB.cachedInspectTalents.order or {}
 	coolstatsDB.cachedPlayerBrowserFavorites = coolstatsDB.cachedPlayerBrowserFavorites or {}
+end
+
+function coolstats.MigrateLegacyCachedPlayerRealmStore(root)
+	root.realms = root.realms or {}
+	if root.realmCacheVersion == 1 then
+		return
+	end
+
+	local legacyPlayers = root.players
+	local legacyOrder = root.order
+	if type(legacyPlayers) == "table" or type(legacyOrder) == "table" then
+		local target = root.realms.onyxia or { players = {}, order = {} }
+		target.players = target.players or {}
+		target.order = target.order or {}
+
+		for key, snapshot in pairs(legacyPlayers or {}) do
+			local existing = target.players[key]
+			if not existing or (tonumber(snapshot and snapshot.seenAt) or 0) >= (tonumber(existing.seenAt) or 0) then
+				target.players[key] = snapshot
+			end
+		end
+
+		local seen = {}
+		local mergedOrder = {}
+		local function AppendOrder(order)
+			for _, key in ipairs(order or {}) do
+				if key and target.players[key] and not seen[key] then
+					seen[key] = true
+					mergedOrder[#mergedOrder + 1] = key
+				end
+			end
+		end
+		AppendOrder(legacyOrder)
+		AppendOrder(target.order)
+		for key in pairs(target.players) do
+			if not seen[key] then
+				mergedOrder[#mergedOrder + 1] = key
+			end
+		end
+		target.order = mergedOrder
+		root.realms.onyxia = target
+	end
+
+	root.players = nil
+	root.order = nil
+	root.realmCacheVersion = 1
+end
+
+function coolstats.GetCachedPlayerRealmStore(root)
+	coolstats.MigrateLegacyCachedPlayerRealmStore(root)
+	local realmKey = coolstats.GetCurrentCachedPlayerRealmKey()
+	local store = root.realms[realmKey]
+	if not store then
+		store = { players = {}, order = {} }
+		root.realms[realmKey] = store
+	end
+	store.players = store.players or {}
+	store.order = store.order or {}
+	return store
 end
 
 local function GetCachedGearStore()
 	EnsureTooltipDatabase()
-	return coolstatsDB.cachedInspectGear
+	return coolstats.GetCachedPlayerRealmStore(coolstatsDB.cachedInspectGear)
 end
 
 function coolstats.GetCachedTalentStore()
 	EnsureTooltipDatabase()
-	return coolstatsDB.cachedInspectTalents
+	return coolstats.GetCachedPlayerRealmStore(coolstatsDB.cachedInspectTalents)
 end
 
 function coolstats.CachedTalentGroupMatchesClass(group, classFile)
@@ -1071,7 +1156,7 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 	local store = coolstats.GetCachedTalentStore()
 	local snapshot = {
 		name = name,
-		realm = realm,
+		realm = coolstats.GetCachedPlayerSnapshotRealmName(realm),
 		classFile = classFile,
 		classIndex = classFile and UWU_CLASS_INDEX_BY_FILE[classFile] or player and player[3],
 		level = UnitLevel(unit),
@@ -1133,7 +1218,7 @@ local function CacheInspectGearForUnit(unit)
 	local store = GetCachedGearStore()
 	local snapshot = {
 		name = name,
-		realm = realm,
+		realm = coolstats.GetCachedPlayerSnapshotRealmName(realm),
 		classFile = classFile,
 		classIndex = classFile and UWU_CLASS_INDEX_BY_FILE[classFile] or player and player[3],
 		level = UnitLevel(unit),
@@ -3093,7 +3178,14 @@ local function CreateUwUPanel(frameName, parent, anchorFrame, standalone)
 		local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		label:SetPoint("LEFT", row, "LEFT", UWU_INSPECT_TEXT_LEFT, 0)
 		label:SetWidth(UWU_INSPECT_LABEL_WIDTH)
+		label:SetHeight(UWU_INSPECT_ROW_HEIGHT)
 		label:SetJustifyH("LEFT")
+		if label.SetWordWrap then
+			label:SetWordWrap(false)
+		end
+		if label.SetNonSpaceWrap then
+			label:SetNonSpaceWrap(false)
+		end
 		label:SetTextColor(0.86, 0.86, 0.78)
 		label:Hide()
 		row.label = label
@@ -5251,7 +5343,7 @@ if type(coolstats) == "table" then
 		end
 		coolstats.RefreshCachedPlayerBrowser(true)
 		if DEFAULT_CHAT_FRAME then
-			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r cached gear and talents cleared.")
+			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r cached gear and talents cleared for " .. (GetRealmName and GetRealmName() or "this realm") .. ".")
 		end
 	end
 
@@ -5262,7 +5354,7 @@ if type(coolstats) == "table" then
 		end
 		if not StaticPopupDialogs["COOLSTATS_CLEAR_CACHED_GEAR"] then
 			StaticPopupDialogs["COOLSTATS_CLEAR_CACHED_GEAR"] = {
-				text = "Clear all cached gear and talents?\n\nLogs data will stay intact.",
+				text = "Clear cached gear and talents for this realm?\n\nLogs data and caches from other realms will stay intact.",
 				button1 = YES or "Yes",
 				button2 = NO or "No",
 				OnAccept = function()

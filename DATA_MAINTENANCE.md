@@ -9,7 +9,7 @@ outside the game and bundled into releases.
 - **Icecrown:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
 - **Lordaeron:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
 
-Icecrown and Lordaeron data is generated as separate load-on-demand addons.
+Onyxia, Icecrown, and Lordaeron data is generated as separate load-on-demand addons.
 Only the dataset matching the player's current realm is loaded in-game.
 
 ## Validate Profiles
@@ -45,6 +45,7 @@ Generated load-on-demand addons are written to:
 ```text
 coolstats/realm_data/coolstats_Data_Icecrown/
 coolstats/realm_data/coolstats_Data_Lordaeron/
+coolstats/realm_data/coolstats_Data_Onyxia/
 ```
 
 The updater refuses to overwrite output when:

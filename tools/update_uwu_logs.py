@@ -2,7 +2,7 @@
 """Generate the coolstats UwU Logs tooltip dataset.
 
 The game addon consumes Lua directly, so this script writes both:
-- coolstats/data/logs/ulduar/coolstats_uwu_data.lua for WoW
+- coolstats/realm_data/coolstats_Data_<Realm>/data/logs/<phase>/coolstats_uwu_data.lua for WoW
 - coolstats/data/uwu_logs_onyxia.json for inspection/history
 
 Weekly refresh policy:
@@ -31,7 +31,6 @@ TOP_ENDPOINT = "https://uwu-logs.xyz/top"
 CHARACTER_ENDPOINT = "https://uwu-logs.xyz/character"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ADDON_ROOT = REPO_ROOT if (REPO_ROOT / "coolstats.toc").is_file() else REPO_ROOT / "coolstats"
-DEFAULT_LUA_PATH = ADDON_ROOT / "data" / "logs" / "ulduar" / "coolstats_uwu_data.lua"
 DEFAULT_JSON_PATH = ADDON_ROOT / "data" / "uwu_logs_onyxia.json"
 DEFAULT_BOSS_CACHE_DIR = ADDON_ROOT / "data"
 DEFAULT_WEEKLY_BOSS_MAX_AGE_DAYS = 1
@@ -158,9 +157,6 @@ def configure_realm_profile(server: str) -> dict:
 
 
 def default_lua_path(server: str, profile: dict) -> Path:
-    server_key = normalize_name(server)
-    if server_key == "onyxia":
-        return DEFAULT_LUA_PATH
     addon_name = f"coolstats_Data_{str(server).strip()}"
     return ADDON_ROOT / "realm_data" / addon_name / "data" / "logs" / profile["phase_id"] / "coolstats_uwu_data.lua"
 
@@ -184,9 +180,6 @@ def read_core_addon_version() -> str:
 
 
 def write_data_addon_manifest(lua_path: Path, server: str, phase_id: str) -> Path | None:
-    if normalize_name(server) == "onyxia":
-        return None
-
     addon_root = lua_path.parents[3]
     addon_name = f"coolstats_Data_{str(server).strip()}"
     if addon_root.name != addon_name:
@@ -204,6 +197,7 @@ def write_data_addon_manifest(lua_path: Path, server: str, phase_id: str) -> Pat
         f"## Notes: Realm-specific UwU Logs data for {server}.",
         "## Author: coolstats",
         f"## Version: {read_core_addon_version()}",
+        "## DefaultState: Enabled",
         "## LoadOnDemand: 1",
         "## RequiredDeps: coolstats",
         f"## X-coolstats-Realm: {server}",
