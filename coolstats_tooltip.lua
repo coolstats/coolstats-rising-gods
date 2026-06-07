@@ -3429,6 +3429,8 @@ if type(coolstats) == "table" then
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if self.talentLink and GameTooltip.SetHyperlink then
 			GameTooltip:SetHyperlink(self.talentLink)
+			GameTooltip:AddLine(" ")
+			GameTooltip:AddLine("Shift-click to link this talent in chat.", 0.62, 0.62, 0.58, true)
 			GameTooltip:Show()
 			return
 		end
@@ -3443,11 +3445,19 @@ if type(coolstats) == "table" then
 		if self.playerName then
 			GameTooltip:AddLine(self.playerName .. " cached talent snapshot", 0.62, 0.62, 0.58, true)
 		end
+		GameTooltip:AddLine("Shift-click to link this talent in chat.", 0.62, 0.62, 0.58, true)
 		GameTooltip:Show()
 	end
 
 	function coolstats.CachedTalentButton_OnLeave()
 		GameTooltip:Hide()
+	end
+
+	function coolstats.CachedTalentButton_OnClick(self)
+		coolstats.TouchManagedWindowOwner(self.cachedTalentPanel)
+		if self.talentLink and IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
+			ChatEdit_InsertLink(self.talentLink)
+		end
 	end
 
 	function coolstats.HideCachedTalentButtons(panel)
@@ -3659,6 +3669,8 @@ if type(coolstats) == "table" then
 		end
 		button = CreateFrame("Button", nil, panel)
 		SetFrameSize(button, 42, 42)
+		button.cachedTalentPanel = panel
+		button:RegisterForClicks("LeftButtonUp")
 		button:SetNormalTexture("Interface\\Icons\\INV_Misc_QuestionMark")
 		local normal = button:GetNormalTexture()
 		if normal then
@@ -3680,6 +3692,7 @@ if type(coolstats) == "table" then
 		rank:SetShadowOffset(1, -1)
 		rank:SetShadowColor(0, 0, 0, 1)
 		button.rankText = rank
+		button:SetScript("OnClick", coolstats.CachedTalentButton_OnClick)
 		button:SetScript("OnEnter", coolstats.CachedTalentButton_OnEnter)
 		button:SetScript("OnLeave", coolstats.CachedTalentButton_OnLeave)
 		panel.talentButtons[index] = button
