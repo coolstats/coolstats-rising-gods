@@ -27,6 +27,7 @@ cached.
 - Individual boss parses directly inside player tooltips by holding `ALT`.
 - Parse colors and specialization icons make results easy to scan.
 - Dedicated logs panels show every available specialization for a player.
+- Side-by-side compare mode cross-references your logs with another player.
 - UwU Logs action added to supported player and chat-name right-click menus.
 
 The logs database is bundled with each addon release. coolstats does not make
@@ -45,9 +46,10 @@ table:
 - View main spec, off spec, parses, best rank, and cache availability.
 - See whether logs, gear, and talents are available before opening a player.
 - Favourite players so they remain at the top of the default list.
-- Right-click players to whisper, invite, view cached talents, or favourite
-  them.
+- Right-click players to compare logs, whisper, invite, view cached talents,
+  or favourite them.
 - Open the normal logs and cached-armory panels by clicking a player.
+- Escape closes open coolstats windows from front to back.
 - Clear the locally stored inspection cache from inside the browser.
 
 ### Cached Gear And Talents
@@ -121,7 +123,8 @@ Minimap controls:
 - **Hold `ALT` while hovering:** view individual boss parses.
 - **Right-click a supported player name:** open their UwU Logs panel.
 - **Click a player in the browser:** open their logs and cached gear.
-- **Right-click a browser row:** whisper, invite, view talents, or favourite.
+- **Right-click a browser row:** compare logs, whisper, invite, view talents,
+  or favourite.
 - **Inspect or interact with a nearby player:** update their local gear and
   talent snapshots when inspection data is available.
 

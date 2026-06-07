@@ -295,6 +295,141 @@ local function SetFrameSize(frame, width, height)
 	end
 end
 
+function coolstats.RemoveManagedWindowSpecialFrame(frameName)
+	if not frameName or not UISpecialFrames then
+		return
+	end
+	for index = #UISpecialFrames, 1, -1 do
+		if UISpecialFrames[index] == frameName then
+			table.remove(UISpecialFrames, index)
+		end
+	end
+end
+
+function coolstats.GetTopManagedWindow()
+	local stack = coolstats.managedWindowStack or {}
+	for index = #stack, 1, -1 do
+		local frame = stack[index]
+		if frame and frame:IsShown() then
+			return frame
+		end
+		table.remove(stack, index)
+	end
+	return nil
+end
+
+function coolstats.SyncManagedWindowEscapeHandler()
+	local handler = coolstats.managedWindowEscapeHandler
+	if not handler then
+		return
+	end
+	if coolstats.GetTopManagedWindow() then
+		handler:Show()
+	elseif handler:IsShown() then
+		handler.suppressManagedHide = true
+		handler:Hide()
+		handler.suppressManagedHide = nil
+	end
+end
+
+function coolstats.EnsureManagedWindowEscapeHandler()
+	if coolstats.managedWindowEscapeHandler then
+		return coolstats.managedWindowEscapeHandler
+	end
+	local handler = CreateFrame("Frame", "coolstatsManagedWindowEscapeHandler", UIParent)
+	coolstats.managedWindowEscapeHandler = handler
+	handler:Hide()
+	handler:SetScript("OnHide", function(self)
+		if self.suppressManagedHide then
+			return
+		end
+		local top = coolstats.GetTopManagedWindow()
+		if top then
+			top:Hide()
+		end
+		coolstats.SyncManagedWindowEscapeHandler()
+	end)
+	if UISpecialFrames then
+		table.insert(UISpecialFrames, "coolstatsManagedWindowEscapeHandler")
+	end
+	return handler
+end
+
+function coolstats.TouchManagedWindow(frame)
+	if not frame or not frame:IsShown() then
+		return
+	end
+	local stack = coolstats.managedWindowStack or {}
+	coolstats.managedWindowStack = stack
+	for index = #stack, 1, -1 do
+		if stack[index] == frame then
+			table.remove(stack, index)
+		end
+	end
+	stack[#stack + 1] = frame
+	coolstats.managedWindowLevel = (coolstats.managedWindowLevel or 120) + 4
+	if coolstats.managedWindowLevel > 800 then
+		coolstats.managedWindowLevel = 124
+	end
+	frame:SetFrameStrata("DIALOG")
+	frame:SetFrameLevel(coolstats.managedWindowLevel)
+	for _, button in ipairs(frame.specButtons or {}) do
+		button:SetFrameLevel(frame:GetFrameLevel() + 7)
+	end
+	if frame.cachedGearPanel then
+		frame.cachedGearPanel:SetFrameStrata("DIALOG")
+		frame.cachedGearPanel:SetFrameLevel(frame:GetFrameLevel() + 1)
+	end
+	for index, child in ipairs(frame.coolstatsManagedChildren or {}) do
+		child:SetFrameStrata("DIALOG")
+		child:SetFrameLevel(frame:GetFrameLevel() + index)
+		for _, button in ipairs(child.specButtons or {}) do
+			button:SetFrameLevel(child:GetFrameLevel() + 7)
+		end
+	end
+	coolstats.EnsureManagedWindowEscapeHandler()
+	coolstats.SyncManagedWindowEscapeHandler()
+end
+
+function coolstats.RemoveManagedWindow(frame)
+	local stack = coolstats.managedWindowStack or {}
+	for index = #stack, 1, -1 do
+		if stack[index] == frame then
+			table.remove(stack, index)
+		end
+	end
+	coolstats.SyncManagedWindowEscapeHandler()
+end
+
+function coolstats.RegisterManagedWindow(frame)
+	if not frame or frame.coolstatsManagedWindow then
+		return
+	end
+	frame.coolstatsManagedWindow = true
+	coolstats.EnsureManagedWindowEscapeHandler()
+	coolstats.RemoveManagedWindowSpecialFrame(frame:GetName())
+	frame:HookScript("OnShow", function(self)
+		coolstats.TouchManagedWindow(self)
+	end)
+	frame:HookScript("OnHide", function(self)
+		coolstats.RemoveManagedWindow(self)
+	end)
+	frame:HookScript("OnMouseDown", function(self)
+		coolstats.TouchManagedWindow(self)
+	end)
+end
+
+function coolstats.TouchManagedWindowOwner(frame)
+	if not frame then
+		return
+	end
+	if frame.coolstatsManagedWindow then
+		coolstats.TouchManagedWindow(frame)
+	elseif frame.coolstatsManagedWindowOwner then
+		coolstats.TouchManagedWindow(frame.coolstatsManagedWindowOwner)
+	end
+end
+
 local function GetCurrentUwUPhase()
 	return UWU_RAID_PHASES[CURRENT_UWU_PHASE_ID] or UWU_RAID_PHASES.ulduar
 end
@@ -2322,6 +2457,7 @@ local function InspectPanelSpecButton_OnClick(self)
 	if not panel or not self.specIndex then
 		return
 	end
+	coolstats.TouchManagedWindowOwner(panel)
 	panel.selectedSpecIndex = self.specIndex
 	if PlaySound then
 		PlaySound("igCharacterInfoTab")
@@ -2502,6 +2638,11 @@ local function CreateCachedGearPanel(ownerPanel)
 	panel:SetBackdropColor(0.02, 0.018, 0.014, 1)
 	panel:SetBackdropBorderColor(0.55, 0.52, 0.48, 1)
 	panel:EnableMouse(true)
+	panel:SetScript("OnMouseDown", function()
+		if ownerPanel.coolstatsManagedWindow then
+			coolstats.TouchManagedWindow(ownerPanel)
+		end
+	end)
 
 	local tabardBackground = panel:CreateTexture(nil, "ARTWORK")
 	tabardBackground:SetTexture("Interface\\TabardFrame\\TabardFrameBackground")
@@ -2775,6 +2916,7 @@ local function CreateUwUPanel(frameName, parent, anchorFrame, standalone)
 				table.insert(UISpecialFrames, frameName)
 			end
 		end
+		coolstats.RegisterManagedWindow(panel)
 	end
 	panel:SetScript("OnHide", function(self)
 		ResetInspectPanelSelectedSpec(self)
@@ -2876,6 +3018,7 @@ local function CreateUwUPanel(frameName, parent, anchorFrame, standalone)
 		row:EnableMouse(false)
 		row:RegisterForClicks("LeftButtonUp")
 		row:SetScript("OnClick", function(self, button)
+			coolstats.TouchManagedWindowOwner(self.uwuPanel)
 			if button == "LeftButton" and self.uwuCollapseRaid then
 				ToggleInspectPanelRaid(self.uwuPanel, self.uwuCollapseRaid)
 			end
@@ -3128,7 +3271,119 @@ local function ShowUwULogsPanelForName(name)
 	CacheGearForLookupName(player and player[1] or lookupName)
 	lookupUwUPanel.forceTalentPanelOpenSound = true
 	RenderUwUPanel(lookupUwUPanel, lookupName, player, "UwU Logs Lookup")
+	coolstats.TouchManagedWindow(lookupUwUPanel)
 	return player ~= nil, player and player[1] or lookupName
+end
+
+function coolstats.CreateLogsComparePanel()
+	if coolstats.logsComparePanel then
+		return coolstats.logsComparePanel
+	end
+
+	local panel = CreateFrame("Frame", "coolstatsLogsComparePanel", UIParent)
+	coolstats.logsComparePanel = panel
+	SetFrameSize(panel, 780, 520)
+	panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+	panel:SetFrameStrata("DIALOG")
+	panel:SetFrameLevel(90)
+	if panel.SetToplevel then
+		panel:SetToplevel(true)
+	end
+	panel:SetMovable(true)
+	panel:EnableMouse(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetScript("OnDragStart", function(self)
+		self:StartMoving()
+	end)
+	panel:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+	end)
+	if panel.SetClampedToScreen then
+		panel:SetClampedToScreen(true)
+	end
+	panel:SetBackdrop({
+		bgFile = "Interface\\Buttons\\WHITE8X8",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		tile = false,
+		edgeSize = 16,
+		insets = { left = 5, right = 5, top = 5, bottom = 5 },
+	})
+	panel:SetBackdropColor(0.02, 0.018, 0.014, 0.98)
+	panel:SetBackdropBorderColor(0.55, 0.52, 0.48, 1)
+	if coolstats.ApplyTabardPanelBackground then
+		coolstats.ApplyTabardPanelBackground(panel, 0.72, 0.48)
+	end
+
+	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOP", panel, "TOP", 0, -13)
+	title:SetText("Logs Compare")
+	title:SetTextColor(0.0, 0.75, 1.0)
+	panel.title = title
+
+	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
+	close:SetScript("OnClick", function()
+		panel:Hide()
+	end)
+
+	local leftPanel = CreateUwUPanel(nil, panel, nil, false)
+	leftPanel:ClearAllPoints()
+	leftPanel:SetPoint("TOPLEFT", panel, "TOPLEFT", 30, -48)
+	leftPanel:SetFrameStrata("DIALOG")
+	leftPanel:SetFrameLevel(panel:GetFrameLevel() + 1)
+	leftPanel.coolstatsManagedWindowOwner = panel
+	leftPanel:SetScript("OnMouseDown", function()
+		coolstats.TouchManagedWindow(panel)
+	end)
+	panel.leftPanel = leftPanel
+
+	local rightPanel = CreateUwUPanel(nil, panel, nil, false)
+	rightPanel:ClearAllPoints()
+	rightPanel:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -45, -48)
+	rightPanel:SetFrameStrata("DIALOG")
+	rightPanel:SetFrameLevel(panel:GetFrameLevel() + 2)
+	rightPanel.coolstatsManagedWindowOwner = panel
+	rightPanel:SetScript("OnMouseDown", function()
+		coolstats.TouchManagedWindow(panel)
+	end)
+	panel.rightPanel = rightPanel
+	panel.coolstatsManagedChildren = { leftPanel, rightPanel }
+
+	panel:SetScript("OnShow", function(self)
+		self.wasShownOnce = true
+		if PlaySound then
+			PlaySound("igCharacterInfoOpen")
+		end
+	end)
+	panel:SetScript("OnHide", function(self)
+		if self.wasShownOnce and PlaySound then
+			PlaySound("igCharacterInfoClose")
+		end
+	end)
+	coolstats.RegisterManagedWindow(panel)
+	panel:Hide()
+	return panel
+end
+
+function coolstats.OpenLogsCompareWithName(name)
+	local compareName = tostring(name or "")
+	compareName = string.gsub(compareName, "^%s+", "")
+	compareName = string.gsub(compareName, "%s+$", "")
+	if compareName == "" then
+		return false
+	end
+
+	local panel = coolstats.CreateLogsComparePanel()
+	local playerName = UnitName("player") or "You"
+	local selfPlayer = GetUwUPlayerByName(playerName)
+	local comparePlayer = GetUwUPlayerByName(compareName)
+	ResetInspectPanelSelectedSpec(panel.leftPanel)
+	ResetInspectPanelSelectedSpec(panel.rightPanel)
+	RenderUwUPanel(panel.leftPanel, playerName, selfPlayer, "Your Logs")
+	RenderUwUPanel(panel.rightPanel, compareName, comparePlayer, "Compared Player")
+	panel:Show()
+	coolstats.TouchManagedWindow(panel)
+	return comparePlayer ~= nil
 end
 
 local function HookInspectUwUPanel()
@@ -3454,6 +3709,7 @@ if type(coolstats) == "table" then
 		if not panel or not self.groupIndex then
 			return
 		end
+		coolstats.TouchManagedWindowOwner(panel)
 		panel.selectedGroupIndex = self.groupIndex
 		if PlaySound then
 			PlaySound("igCharacterInfoTab")
@@ -3545,6 +3801,7 @@ if type(coolstats) == "table" then
 				table.insert(UISpecialFrames, "coolstatsCachedTalentsPanel")
 			end
 		end
+		coolstats.RegisterManagedWindow(panel)
 
 		local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		title:SetPoint("TOP", panel, "TOP", 0, -14)
@@ -4313,7 +4570,7 @@ if type(coolstats) == "table" then
 			GameTooltip:AddDoubleLine("Gear Cached", self.cacheText, 0.86, 0.86, 0.78, 1, 1, 1)
 		end
 		GameTooltip:AddLine("Left-click to open the standard UwU lookup.", 0.62, 0.62, 0.58, true)
-		GameTooltip:AddLine("Right-click for whisper, invite, talents, and favourite.", 0.62, 0.62, 0.58, true)
+		GameTooltip:AddLine("Right-click for compare, whisper, invite, talents, and favourite.", 0.62, 0.62, 0.58, true)
 		GameTooltip:Show()
 	end
 
@@ -4532,6 +4789,14 @@ if type(coolstats) == "table" then
 		UIDropDownMenu_AddButton(info, level)
 
 		info = UIDropDownMenu_CreateInfo()
+		info.text = "Compare Logs"
+		info.notCheckable = 1
+		info.func = function()
+			coolstats.OpenLogsCompareWithName(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
+		info = UIDropDownMenu_CreateInfo()
 		info.text = isFavorite and "Unfavourite" or "Favourite"
 		info.notCheckable = 1
 		info.func = function()
@@ -4565,6 +4830,7 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.CachedPlayerBrowserRow_OnClick(self, button)
+		coolstats.TouchManagedWindow(coolstats.cachedPlayerBrowser)
 		if button == "RightButton" then
 			coolstats.OpenCachedPlayerBrowserRowMenu(self)
 			return
@@ -5177,6 +5443,7 @@ if type(coolstats) == "table" then
 				table.insert(UISpecialFrames, "coolstatsCachedPlayerBrowser")
 			end
 		end
+		coolstats.RegisterManagedWindow(panel)
 
 		local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		title:SetPoint("TOP", panel, "TOP", 0, -14)
@@ -5208,6 +5475,9 @@ if type(coolstats) == "table" then
 				return
 			end
 			coolstats.QueueCachedPlayerBrowserSearch(panel)
+		end)
+		search:SetScript("OnMouseDown", function()
+			coolstats.TouchManagedWindow(panel)
 		end)
 		search:SetScript("OnEnterPressed", function(self)
 			self:ClearFocus()
