@@ -9,6 +9,8 @@ data/logs/*
 *.zip
 *.7z
 *.rar
+__pycache__/
+*.pyc
 
 # Local screenshots/videos used while developing the addon.
 *.png

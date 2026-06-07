@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r
 ## Notes: Character stats, item levels, UwU Logs, cached gear/talents, player browser, and loot alerts.
 ## Author: coolstats
-## Version: 0.2.3
+## Version: 0.2.4
 ## SavedVariables: coolstatsDB
 ## OptionalDeps: BonusScanner, GearScore
 
