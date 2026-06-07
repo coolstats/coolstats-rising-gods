@@ -2,6 +2,8 @@
 coolstatsUwUData = {
 	generatedAt = "2026-06-05T22:15:22+00:00",
 	realm = "Onyxia",
+	phaseId = "ulduar",
+	defaultRaidName = "Ulduar",
 	source = "https://uwu-logs.xyz/top_points",
 	topSource = "https://uwu-logs.xyz/top",
 	characterSource = "https://uwu-logs.xyz/character",

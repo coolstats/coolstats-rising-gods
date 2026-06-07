@@ -8,6 +8,12 @@ local REALM_DATA_ADDONS = {
 	lordaeron = "coolstats_Data_Lordaeron",
 }
 
+local REALM_PHASE_IDS = {
+	onyxia = "ulduar",
+	icecrown = "icc",
+	lordaeron = "icc",
+}
+
 local function NormalizeRealmName(realm)
 	return string.lower(string.gsub(tostring(realm or ""), "[^%a%d]", ""))
 end
@@ -62,6 +68,10 @@ end
 
 function coolstats.GetRealmDataAddonName(realm)
 	return REALM_DATA_ADDONS[NormalizeRealmName(realm or GetCurrentRealmName())]
+end
+
+function coolstats.GetExpectedRealmPhaseId(realm)
+	return REALM_PHASE_IDS[NormalizeRealmName(realm or GetCurrentRealmName())]
 end
 
 function coolstats.GetRealmDataStatus()

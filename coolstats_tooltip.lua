@@ -46,6 +46,10 @@ local UWU_RAID_PHASES = {
 		name = "Icecrown Citadel",
 		defaultCollapsedRaids = {},
 	},
+	rs = {
+		name = "Ruby Sanctum",
+		defaultCollapsedRaids = {},
+	},
 }
 
 local UWU_INSPECT_PANEL_WIDTH = 318
@@ -205,7 +209,7 @@ local UWU_BOSS_RAID_OVERRIDES = {
 	["Lord Jaraxxus"] = "Trial of the Crusader",
 	["Faction Champions"] = "Trial of the Crusader",
 	["Twin Val'kyr"] = "Trial of the Crusader",
-	["Anub'arak"] = "Trial of the Crusader",
+	["Anub'arak"] = "Trial of the Grand Crusader",
 	["Lord Marrowgar"] = "Icecrown Citadel",
 	["Lady Deathwhisper"] = "Icecrown Citadel",
 	["Gunship Battle"] = "Icecrown Citadel",
@@ -219,6 +223,7 @@ local UWU_BOSS_RAID_OVERRIDES = {
 	["Valithria Dreamwalker"] = "Icecrown Citadel",
 	["Sindragosa"] = "Icecrown Citadel",
 	["The Lich King"] = "Icecrown Citadel",
+	["Halion"] = "Ruby Sanctum",
 }
 
 local UWU_BOSS_SHORT_NAMES = {
@@ -431,7 +436,8 @@ function coolstats.TouchManagedWindowOwner(frame)
 end
 
 local function GetCurrentUwUPhase()
-	return UWU_RAID_PHASES[CURRENT_UWU_PHASE_ID] or UWU_RAID_PHASES.ulduar
+	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_UWU_PHASE_ID
+	return UWU_RAID_PHASES[phaseId] or UWU_RAID_PHASES.ulduar
 end
 
 local function NormalizeName(name)
@@ -1434,7 +1440,8 @@ local function PruneRaidProgressCache(force)
 end
 
 local function GetCurrentRaid()
-	return RAID_PROGRESS_DATA[CURRENT_RAID_ID]
+	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_RAID_ID
+	return RAID_PROGRESS_DATA[phaseId]
 end
 
 local function IsAchievementComplete(achievementID, source)
@@ -1711,6 +1718,9 @@ local function AddRaidProgressLines(unit)
 		GameTooltip:AddDoubleLine(uwuProgress.hardLabel, hardText, 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
 		return true
 	end
+	if not GetCurrentRaid() then
+		return false
+	end
 
 	local progress = raidProgressCache[key]
 	if progress and not IsCachedProgressUsable(progress) then
@@ -1792,7 +1802,8 @@ local function FormatUwUScoreWithRank(scoreCenti, rank)
 end
 
 local function GetUwUBossRaidName(bossName)
-	return UWU_BOSS_RAID_OVERRIDES[bossName] or "Ulduar"
+	local data = coolstatsUwUData
+	return UWU_BOSS_RAID_OVERRIDES[bossName] or (data and data.defaultRaidName) or "Ulduar"
 end
 
 local function GetUwUBossDisplayName(bossName)
@@ -1838,6 +1849,10 @@ local function GetUwUBossIndexByName()
 end
 
 BuildUwURaidProgress = function(unit)
+	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId())
+	if phaseId and phaseId ~= "ulduar" then
+		return nil
+	end
 	local name = unit and UnitName(unit)
 	local player = name and GetUwUPlayerByName and GetUwUPlayerByName(name)
 	if not player then
