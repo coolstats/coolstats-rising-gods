@@ -27,6 +27,8 @@ cached.
 | --- | --- |
 | <img src="https://i.imgur.com/n2PYD7q.png" alt="UwU Logs inside a player tooltip" width="460"> | <img src="https://i.imgur.com/c057HzR.png" alt="Direct UwU Logs lookup from a player menu" width="354"> |
 
+![Icecrown Citadel and current-phase logs](https://i.imgur.com/uRopxHy.png)
+
 - Bundled UwU Logs database containing up to the top 400 players for every
   class specialization.
 - Overall raid score, best rank, and specialization-specific parse data.
