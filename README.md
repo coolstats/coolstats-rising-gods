@@ -4,6 +4,8 @@
 
 **A faster way to understand a player before the pull.**
 
+**Supported realms:** Onyxia, Lordaeron, and Icecrown.
+
 coolstats brings UwU Logs lookups, a searchable player browser, cached gear and
 talent inspection, and an optional character-panel overhaul together inside the
 game.
