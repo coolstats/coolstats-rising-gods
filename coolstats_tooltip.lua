@@ -4750,12 +4750,41 @@ if type(coolstats) == "table" then
 					hideOnEscape = 1,
 					OnShow = function(self)
 						local editBox = self.editBox or _G[self:GetName() .. "EditBox"]
+						self.coolstatsBrowserUrlOriginalWidth = self:GetWidth()
 						self:SetWidth(760)
 						if editBox then
+							editBox.coolstatsBrowserUrlOriginalWidth = editBox:GetWidth()
+							editBox.coolstatsBrowserUrlOriginalPoints = {}
+							for pointIndex = 1, editBox:GetNumPoints() do
+								editBox.coolstatsBrowserUrlOriginalPoints[pointIndex] = { editBox:GetPoint(pointIndex) }
+							end
+							editBox:ClearAllPoints()
+							editBox:SetPoint("TOP", self, "TOP", 0, -48)
 							editBox:SetWidth(680)
 							editBox:SetText(coolstats.cachedPlayerBrowserUrl or "")
 							editBox:SetFocus()
 							editBox:HighlightText()
+						end
+					end,
+					OnHide = function(self)
+						local editBox = self.editBox or _G[self:GetName() .. "EditBox"]
+						if editBox then
+							editBox:ClearFocus()
+							if editBox.coolstatsBrowserUrlOriginalWidth then
+								editBox:SetWidth(editBox.coolstatsBrowserUrlOriginalWidth)
+							end
+							if editBox.coolstatsBrowserUrlOriginalPoints then
+								editBox:ClearAllPoints()
+								for pointIndex = 1, #editBox.coolstatsBrowserUrlOriginalPoints do
+									editBox:SetPoint(unpack(editBox.coolstatsBrowserUrlOriginalPoints[pointIndex], 1, 5))
+								end
+							end
+							editBox.coolstatsBrowserUrlOriginalWidth = nil
+							editBox.coolstatsBrowserUrlOriginalPoints = nil
+						end
+						if self.coolstatsBrowserUrlOriginalWidth then
+							self:SetWidth(self.coolstatsBrowserUrlOriginalWidth)
+							self.coolstatsBrowserUrlOriginalWidth = nil
 						end
 					end,
 					EditBoxOnEnterPressed = function(self)
