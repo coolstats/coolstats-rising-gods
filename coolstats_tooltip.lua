@@ -4865,6 +4865,17 @@ if type(coolstats) == "table" then
 		end
 	end
 
+	function coolstats.TargetCachedPlayerBrowserPlayer(name)
+		name = string.gsub(tostring(name or ""), "%-.+$", "")
+		if name == "" or not TargetByName then
+			return
+		end
+		if CloseDropDownMenus then
+			CloseDropDownMenus()
+		end
+		TargetByName(name, true)
+	end
+
 	function coolstats.GetCachedPlayerBrowserHelpName()
 		return "Jumpscared"
 	end
@@ -4987,6 +4998,14 @@ if type(coolstats) == "table" then
 		info.notCheckable = 1
 		info.func = function()
 			coolstats.InviteCachedPlayerBrowserPlayer(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
+		info = UIDropDownMenu_CreateInfo()
+		info.text = "Target"
+		info.notCheckable = 1
+		info.func = function()
+			coolstats.TargetCachedPlayerBrowserPlayer(name)
 		end
 		UIDropDownMenu_AddButton(info, level)
 
