@@ -271,6 +271,7 @@ local UWU_PROGRESS_HARD_BOSSES = {
 
 local raidProgressCache = {}
 local pendingRaidProgress = nil
+local tooltipAchievementComparisonOwned = false
 local lastRaidProgressPruneAt = 0
 local tooltipFrame = CreateFrame("Frame")
 local inspectUwUPanel = nil
@@ -1494,13 +1495,52 @@ local function CachedGearButton_OnClick(self)
 end
 
 function coolstats.IsAchievementComparisonUIVisible()
-	return AchievementFrameComparison and AchievementFrameComparison:IsShown()
+	if AchievementFrameComparison and AchievementFrameComparison:IsShown() then
+		return true
+	end
+	if AchievementFrame and AchievementFrame:IsShown() then
+		if AchievementFrame.isComparison then
+			return true
+		end
+		if AchievementFrameTab_OnClick and AchievementFrameComparisonTab_OnClick and AchievementFrameTab_OnClick == AchievementFrameComparisonTab_OnClick then
+			return true
+		end
+	end
+	return false
 end
 
 function coolstats.ClearTooltipAchievementComparison()
-	if not coolstats.IsAchievementComparisonUIVisible() and ClearAchievementComparisonUnit then
+	if not tooltipAchievementComparisonOwned then
+		return
+	end
+	if coolstats.IsAchievementComparisonUIVisible() then
+		tooltipAchievementComparisonOwned = false
+		return
+	end
+	if ClearAchievementComparisonUnit then
 		ClearAchievementComparisonUnit()
 	end
+	tooltipAchievementComparisonOwned = false
+end
+
+function coolstats.YieldTooltipAchievementComparisonToUI()
+	if pendingRaidProgress then
+		local interruptedKey = pendingRaidProgress.key
+		pendingRaidProgress = nil
+		if CacheRaidProgressFailure then
+			CacheRaidProgressFailure(interruptedKey, true)
+		end
+	end
+	tooltipAchievementComparisonOwned = false
+	tooltipFrame:SetScript("OnUpdate", nil)
+end
+
+function coolstats.HookAchievementComparisonUI()
+	if not AchievementFrameComparison or AchievementFrameComparison.__coolstatsComparisonGuardHooked then
+		return
+	end
+	AchievementFrameComparison.__coolstatsComparisonGuardHooked = true
+	AchievementFrameComparison:HookScript("OnShow", coolstats.YieldTooltipAchievementComparisonToUI)
 end
 
 local function ClearRaidProgressCacheForUnit(unit)
@@ -1722,6 +1762,7 @@ local function RaidProgressFrame_OnUpdate(self)
 	if pendingRaidProgress and coolstats.IsAchievementComparisonUIVisible() then
 		local interruptedKey = pendingRaidProgress.key
 		pendingRaidProgress = nil
+		tooltipAchievementComparisonOwned = false
 		CacheRaidProgressFailure(interruptedKey, true)
 		self:SetScript("OnUpdate", nil)
 		return
@@ -1791,10 +1832,9 @@ local function RequestRaidProgress(unit, key)
 		return
 	end
 
-	if ClearAchievementComparisonUnit then
-		ClearAchievementComparisonUnit()
-	end
+	coolstats.ClearTooltipAchievementComparison()
 	SetAchievementComparisonUnit(unit)
+	tooltipAchievementComparisonOwned = true
 
 	pendingRaidProgress = {
 		key = key,
@@ -6055,6 +6095,8 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		elseif addonName == "Blizzard_InspectUI" then
 			HookInspectUwUPanel()
 			UpdateInspectUwUPanel()
+		elseif addonName == "Blizzard_AchievementUI" then
+			coolstats.HookAchievementComparisonUI()
 		end
 		return
 	end
@@ -6114,6 +6156,7 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	local key = pendingRaidProgress.key
 	if coolstats.IsAchievementComparisonUIVisible() then
 		pendingRaidProgress = nil
+		tooltipAchievementComparisonOwned = false
 		CacheRaidProgressFailure(key, true)
 		self:SetScript("OnUpdate", nil)
 		return
@@ -6129,3 +6172,4 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 end)
 
 GameTooltip:HookScript("OnTooltipSetUnit", AddTooltipLines)
+coolstats.HookAchievementComparisonUI()
