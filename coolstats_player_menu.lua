@@ -2,6 +2,8 @@ local coolstats = _G.coolstats or {}
 
 local UWU_LOGS_BUTTON = "COOLSTATS_UWU_LOGS"
 local UWU_LOGS_TEXT = "|cffffd100UWU Logs|r"
+local TARGET_PLAYER_BUTTON = "COOLSTATS_TARGET_PLAYER"
+local TARGET_PLAYER_TEXT = TARGET or "Target"
 
 local function Print(message)
 	if DEFAULT_CHAT_FRAME then
@@ -71,6 +73,15 @@ local function MenuHasButton(menu, buttonName)
 	return false
 end
 
+local function GetButtonIndex(menu, buttonName)
+	for index = 1, #menu do
+		if menu[index] == buttonName then
+			return index
+		end
+	end
+	return nil
+end
+
 local function MenuLooksPlayerRelated(menuName, menu)
 	if menuName == "SELF" then
 		return true
@@ -128,23 +139,34 @@ local function GetInsertIndex(menu)
 	return fallbackIndex
 end
 
-local function AddUwULogsToPlayerMenus()
+local function ConfigurePopupButton(buttonName, text)
+	UnitPopupButtons[buttonName] = UnitPopupButtons[buttonName] or {
+		text = text,
+		dist = 0,
+		notCheckable = 1,
+	}
+	UnitPopupButtons[buttonName].text = text
+	UnitPopupButtons[buttonName].dist = 0
+	UnitPopupButtons[buttonName].notCheckable = 1
+end
+
+local function AddCoolstatsActionsToPlayerMenus()
 	if type(UnitPopupButtons) ~= "table" or type(UnitPopupMenus) ~= "table" then
 		return false
 	end
 
-	UnitPopupButtons[UWU_LOGS_BUTTON] = UnitPopupButtons[UWU_LOGS_BUTTON] or {
-		text = UWU_LOGS_TEXT,
-		dist = 0,
-		notCheckable = 1,
-	}
-	UnitPopupButtons[UWU_LOGS_BUTTON].text = UWU_LOGS_TEXT
-	UnitPopupButtons[UWU_LOGS_BUTTON].dist = 0
-	UnitPopupButtons[UWU_LOGS_BUTTON].notCheckable = 1
+	ConfigurePopupButton(TARGET_PLAYER_BUTTON, TARGET_PLAYER_TEXT)
+	ConfigurePopupButton(UWU_LOGS_BUTTON, UWU_LOGS_TEXT)
 
 	for menuName, menu in pairs(UnitPopupMenus) do
-		if type(menu) == "table" and MenuLooksPlayerRelated(menuName, menu) and not MenuHasButton(menu, UWU_LOGS_BUTTON) then
-			table.insert(menu, GetInsertIndex(menu), UWU_LOGS_BUTTON)
+		if type(menu) == "table" and MenuLooksPlayerRelated(menuName, menu) then
+			if menuName ~= "SELF" and not MenuHasButton(menu, TARGET_PLAYER_BUTTON) then
+				table.insert(menu, GetInsertIndex(menu), TARGET_PLAYER_BUTTON)
+			end
+			if not MenuHasButton(menu, UWU_LOGS_BUTTON) then
+				local targetIndex = GetButtonIndex(menu, TARGET_PLAYER_BUTTON)
+				table.insert(menu, targetIndex and (targetIndex + 1) or GetInsertIndex(menu), UWU_LOGS_BUTTON)
+			end
 		end
 	end
 
@@ -171,12 +193,27 @@ local function OpenUwULogsForMenuPlayer(button)
 	end
 end
 
+local function TargetMenuPlayer(button)
+	local name = CleanPlayerName(GetDropdownPlayerName(button))
+	if name == "" or not TargetByName then
+		return
+	end
+	TargetByName(name, true)
+end
+
 local function OnUnitPopupClick(button)
-	if not button or button.value ~= UWU_LOGS_BUTTON then
+	if not button then
 		return
 	end
 
-	OpenUwULogsForMenuPlayer(button)
+	if button.value == TARGET_PLAYER_BUTTON then
+		TargetMenuPlayer(button)
+	elseif button.value == UWU_LOGS_BUTTON then
+		OpenUwULogsForMenuPlayer(button)
+	else
+		return
+	end
+
 	if CloseDropDownMenus then
 		CloseDropDownMenus()
 	end
@@ -204,7 +241,7 @@ local function HookUnitPopupClick()
 end
 
 local function InitializeUwULogsPlayerMenu()
-	AddUwULogsToPlayerMenus()
+	AddCoolstatsActionsToPlayerMenus()
 	HookUnitPopupClick()
 end
 
