@@ -14,7 +14,7 @@ Only the dataset matching the player's current realm is loaded in-game.
 
 ## Validate Profiles
 
-Run small, non-writing API checks for Icecrown and Lordaeron:
+Run small, non-writing API checks for all supported realms:
 
 ```powershell
 .\tools\update_all_uwu_realms.ps1
@@ -38,7 +38,7 @@ but should not be used for a public weekly release.
 ```
 
 The full pull refreshes the top 400 players per class/spec and all configured
-boss leaderboards for Icecrown and Lordaeron.
+boss leaderboards for Onyxia, Icecrown, and Lordaeron.
 
 Generated load-on-demand addons are written to:
 

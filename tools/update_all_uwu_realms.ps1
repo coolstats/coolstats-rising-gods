@@ -2,7 +2,7 @@ param(
 	[ValidateSet("Validate", "Scores", "Weekly")]
 	[string]$Mode = "Validate",
 
-	[string[]]$Realms = @("Icecrown", "Lordaeron"),
+	[string[]]$Realms = @("Onyxia", "Icecrown", "Lordaeron"),
 
 	[int]$MaxPerSpec = 400,
 

@@ -106,7 +106,37 @@ if (Test-Path -LiteralPath $realmDataPath) {
 if (Test-Path -LiteralPath $zipPath) {
 	Remove-Item -LiteralPath $zipPath -Force
 }
-Compress-Archive -Path (Join-Path $stageRoot "*") -DestinationPath $zipPath -CompressionLevel Optimal
+
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$archive = [System.IO.Compression.ZipFile]::Open(
+	$zipPath,
+	[System.IO.Compression.ZipArchiveMode]::Create
+)
+try {
+	Get-ChildItem -LiteralPath $stageRoot -Recurse -File |
+		ForEach-Object {
+			$entryName = $_.FullName.Substring($stageRoot.Length + 1).Replace("\", "/")
+			$entry = $archive.CreateEntry(
+				$entryName,
+				[System.IO.Compression.CompressionLevel]::Optimal
+			)
+			$entryStream = $entry.Open()
+			$fileStream = [System.IO.File]::OpenRead($_.FullName)
+			try {
+				$fileStream.CopyTo($entryStream)
+			}
+			finally {
+				$fileStream.Dispose()
+				$entryStream.Dispose()
+			}
+		}
+}
+finally {
+	$archive.Dispose()
+}
+
 Remove-Item -LiteralPath $stageRoot -Recurse -Force
 
 $zip = Get-Item -LiteralPath $zipPath

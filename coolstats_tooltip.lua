@@ -1493,6 +1493,16 @@ local function CachedGearButton_OnClick(self)
 	end
 end
 
+function coolstats.IsAchievementComparisonUIVisible()
+	return AchievementFrameComparison and AchievementFrameComparison:IsShown()
+end
+
+function coolstats.ClearTooltipAchievementComparison()
+	if not coolstats.IsAchievementComparisonUIVisible() and ClearAchievementComparisonUnit then
+		ClearAchievementComparisonUnit()
+	end
+end
+
 local function ClearRaidProgressCacheForUnit(unit)
 	local key = unit and GetUnitCacheKey(unit)
 	if not key then
@@ -1501,9 +1511,7 @@ local function ClearRaidProgressCacheForUnit(unit)
 	raidProgressCache[key] = nil
 	if pendingRaidProgress and pendingRaidProgress.key == key then
 		pendingRaidProgress = nil
-		if ClearAchievementComparisonUnit then
-			ClearAchievementComparisonUnit()
-		end
+		coolstats.ClearTooltipAchievementComparison()
 		tooltipFrame:SetScript("OnUpdate", nil)
 	end
 end
@@ -1711,12 +1719,17 @@ end
 
 local function RaidProgressFrame_OnUpdate(self)
 	local now = GetTime()
+	if pendingRaidProgress and coolstats.IsAchievementComparisonUIVisible() then
+		local interruptedKey = pendingRaidProgress.key
+		pendingRaidProgress = nil
+		CacheRaidProgressFailure(interruptedKey, true)
+		self:SetScript("OnUpdate", nil)
+		return
+	end
 	if pendingRaidProgress and now - pendingRaidProgress.requestedAt >= RAID_PROGRESS_REQUEST_TIMEOUT_SECONDS then
 		local failedKey = pendingRaidProgress.key
 		pendingRaidProgress = nil
-		if ClearAchievementComparisonUnit then
-			ClearAchievementComparisonUnit()
-		end
+		coolstats.ClearTooltipAchievementComparison()
 		CacheRaidProgressFailure(failedKey, true)
 		RefreshTooltipForKey(failedKey)
 	end
@@ -1769,6 +1782,11 @@ local function RequestRaidProgress(unit, key)
 	end
 
 	if UnitIsVisible and not UnitIsVisible(unit) then
+		CacheRaidProgressFailure(key, true)
+		return
+	end
+
+	if coolstats.IsAchievementComparisonUIVisible() then
 		CacheRaidProgressFailure(key, true)
 		return
 	end
@@ -4690,7 +4708,7 @@ if type(coolstats) == "table" then
 			GameTooltip:AddDoubleLine("Gear Cached", self.cacheText, 0.86, 0.86, 0.78, 1, 1, 1)
 		end
 		GameTooltip:AddLine("Left-click to open the standard UwU lookup.", 0.62, 0.62, 0.58, true)
-		GameTooltip:AddLine("Right-click for compare, whisper, invite, talents, and favourite.", 0.62, 0.62, 0.58, true)
+		GameTooltip:AddLine("Right-click for actions, including armory and talents.", 0.62, 0.62, 0.58, true)
 		GameTooltip:Show()
 	end
 
@@ -4732,7 +4750,9 @@ if type(coolstats) == "table" then
 					hideOnEscape = 1,
 					OnShow = function(self)
 						local editBox = self.editBox or _G[self:GetName() .. "EditBox"]
+						self:SetWidth(760)
 						if editBox then
+							editBox:SetWidth(680)
 							editBox:SetText(coolstats.cachedPlayerBrowserUrl or "")
 							editBox:SetFocus()
 							editBox:HighlightText()
@@ -4751,6 +4771,47 @@ if type(coolstats) == "table" then
 		elseif DEFAULT_CHAT_FRAME then
 			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r " .. url)
 		end
+	end
+
+	function coolstats.GetCachedPlayerBrowserRealmName()
+		local realm = GetRealmName and GetRealmName() or ""
+		local realmKey = string.lower(string.gsub(tostring(realm), "[^%a%d]", ""))
+		local supportedRealms = {
+			icecrown = "Icecrown",
+			lordaeron = "Lordaeron",
+			onyxia = "Onyxia",
+		}
+		return supportedRealms[realmKey] or realm
+	end
+
+	function coolstats.EncodeCachedPlayerBrowserUrlSegment(value)
+		return string.gsub(tostring(value or ""), "([^%w%-%._~])", function(character)
+			return string.format("%%%02X", string.byte(character))
+		end)
+	end
+
+	function coolstats.GetCachedPlayerBrowserWarmaneArmoryUrl(name)
+		name = string.gsub(tostring(name or ""), "%-.+$", "")
+		local realm = coolstats.GetCachedPlayerBrowserRealmName()
+		if name == "" or realm == "" then
+			return nil
+		end
+		return "https://armory.warmane.com/character/"
+			.. coolstats.EncodeCachedPlayerBrowserUrlSegment(name)
+			.. "/"
+			.. coolstats.EncodeCachedPlayerBrowserUrlSegment(realm)
+			.. "/summary"
+	end
+
+	function coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
+		local url = coolstats.GetCachedPlayerBrowserWarmaneArmoryUrl(name)
+		if not url then
+			return
+		end
+		if CloseDropDownMenus then
+			CloseDropDownMenus()
+		end
+		coolstats.ShowCachedPlayerBrowserUrl("Warmane Armory", url)
 	end
 
 	function coolstats.WhisperCachedPlayerBrowserPlayer(name)
@@ -4897,6 +4958,14 @@ if type(coolstats) == "table" then
 		info.notCheckable = 1
 		info.func = function()
 			coolstats.InviteCachedPlayerBrowserPlayer(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
+		info = UIDropDownMenu_CreateInfo()
+		info.text = "Warmane Armory"
+		info.notCheckable = 1
+		info.func = function()
+			coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
 		end
 		UIDropDownMenu_AddButton(info, level)
 
@@ -5995,13 +6064,17 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	end
 
 	local key = pendingRaidProgress.key
+	if coolstats.IsAchievementComparisonUIVisible() then
+		pendingRaidProgress = nil
+		CacheRaidProgressFailure(key, true)
+		self:SetScript("OnUpdate", nil)
+		return
+	end
 	local unit = pendingRaidProgress.unit
 	raidProgressCache[key] = BuildRaidProgress("comparison", unit)
 	pendingRaidProgress = nil
 
-	if ClearAchievementComparisonUnit then
-		ClearAchievementComparisonUnit()
-	end
+	coolstats.ClearTooltipAchievementComparison()
 
 	self:SetScript("OnUpdate", nil)
 	RefreshTooltipForKey(key)
