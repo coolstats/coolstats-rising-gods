@@ -1,0 +1,1 @@
+coolstatsCacheDB = coolstatsCacheDB or {}

@@ -59,6 +59,7 @@ $runtimeFiles = @(
 	"coolstats_lootalert.xml",
 	"coolstats_options.lua",
 	"coolstats_player_menu.lua",
+	"coolstats_talent_catalogs.lua",
 	"coolstats_tooltip.lua"
 )
 
@@ -75,6 +76,26 @@ foreach ($relativePath in $runtimeFiles | Sort-Object -Unique) {
 	$destinationDirectory = Split-Path -Parent $destinationPath
 	New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
 	Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+}
+
+$cacheAddonPath = Join-Path $publishPath "cache_addon\coolstats_Cache"
+if (Test-Path -LiteralPath $cacheAddonPath) {
+	$cacheTocPath = Join-Path $cacheAddonPath "coolstats_Cache.toc"
+	if (-not (Test-Path -LiteralPath $cacheTocPath)) {
+		throw "Missing cache addon TOC: $cacheTocPath"
+	}
+	$cacheTocVersion = Select-String -LiteralPath $cacheTocPath -Pattern "^## Version:\s*(.+)$" |
+		Select-Object -First 1
+	if (-not $cacheTocVersion -or $cacheTocVersion.Matches[0].Groups[1].Value.Trim() -ne $Version) {
+		throw "coolstats_Cache TOC version does not match requested release version $Version"
+	}
+	$cacheStage = Join-Path $stageRoot "coolstats_Cache"
+	Get-ChildItem -LiteralPath $cacheAddonPath -File |
+		Where-Object { $_.Extension -match "^\.(toc|lua)$" } |
+		ForEach-Object {
+			New-Item -ItemType Directory -Path $cacheStage -Force | Out-Null
+			Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $cacheStage $_.Name) -Force
+		}
 }
 
 $realmDataPath = Join-Path $publishPath "realm_data"

@@ -30,6 +30,15 @@ local defaults = {
 	showItemLevels = true,
 	showSlotBorders = true,
 	cleanGearScoreTooltips = true,
+	tooltip = {
+		guildRank = true,
+		classLine = true,
+		target = true,
+		raidProgressFallback = true,
+		logsSummary = true,
+		logsBossDetails = true,
+		cacheOnHover = true,
+	},
 	editMode = false,
 	popoutMode = false,
 	favoriteMode = false,
@@ -369,6 +378,11 @@ local function EnsureEditOptions()
 	else
 		db.lootAlerts = CopyDefaults(db.lootAlerts, defaults.lootAlerts)
 	end
+	if type(db.tooltip) ~= "table" then
+		db.tooltip = CopyDefaults({}, defaults.tooltip)
+	else
+		db.tooltip = CopyDefaults(db.tooltip, defaults.tooltip)
+	end
 	if type(db.minimap) ~= "table" then
 		db.minimap = CopyDefaults({}, defaults.minimap)
 	else
@@ -490,6 +504,11 @@ end
 function coolstats.GetLootAlertOptions()
 	EnsureEditOptions()
 	return db and db.lootAlerts or defaults.lootAlerts
+end
+
+function coolstats.GetTooltipOptions()
+	EnsureEditOptions()
+	return db and db.tooltip or defaults.tooltip
 end
 
 function coolstats.GetItemLevelBadgeOptions()

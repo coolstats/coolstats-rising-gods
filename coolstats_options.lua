@@ -49,6 +49,18 @@ local function GetLootOptions()
 	return {}
 end
 
+local function GetTooltipOptions()
+	if coolstats.GetTooltipOptions then
+		return coolstats.GetTooltipOptions()
+	end
+	local db = GetDB()
+	if db then
+		db.tooltip = db.tooltip or {}
+		return db.tooltip
+	end
+	return {}
+end
+
 local function GetBackgroundOptions()
 	if coolstats.GetBackgroundOptions then
 		return coolstats.GetBackgroundOptions()
@@ -170,6 +182,9 @@ local function RefreshAddon()
 	end
 	if coolstats.RefreshItemLevelOptionsPanel then
 		coolstats.RefreshItemLevelOptionsPanel()
+	end
+	if coolstats.RefreshTooltipOptionsPanel then
+		coolstats.RefreshTooltipOptionsPanel()
 	end
 end
 
@@ -806,6 +821,15 @@ function coolstats.ResetOptionsPanelDefaults()
 	db.showItemLevels = defaults.showItemLevels
 	db.showSlotBorders = defaults.showSlotBorders
 	db.cleanGearScoreTooltips = defaults.cleanGearScoreTooltips
+	db.tooltip = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.tooltip) or {
+		guildRank = true,
+		classLine = true,
+		target = true,
+		raidProgressFallback = true,
+		logsSummary = true,
+		logsBossDetails = true,
+		cacheOnHover = true,
+	}
 	db.itemLevelBadges = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.itemLevelBadges) or {
 		position = "default",
 		fontSize = 15,
@@ -860,6 +884,106 @@ function coolstats.ResetItemLevelOptionsPanelDefaults()
 		fontSize = 15,
 	}
 	RefreshAddon()
+end
+
+function coolstats.RefreshTooltipOptionsPanel()
+	local panel = coolstats.tooltipOptionsPanel
+	if not panel then
+		return
+	end
+	for index = 1, #panel.controls do
+		local control = panel.controls[index]
+		if control.getter then
+			control:SetChecked(control.getter())
+		end
+	end
+end
+
+function coolstats.ResetTooltipOptionsPanelDefaults()
+	local db = GetDB()
+	local defaults = GetDefaults()
+	if not db or not defaults then
+		return
+	end
+	db.tooltip = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.tooltip) or {
+		guildRank = true,
+		classLine = true,
+		target = true,
+		raidProgressFallback = true,
+		logsSummary = true,
+		logsBossDetails = true,
+		cacheOnHover = true,
+	}
+	RefreshAddon()
+end
+
+function coolstats.CreateTooltipOptionsPanel()
+	if coolstats.tooltipOptionsPanel then
+		return coolstats.tooltipOptionsPanel
+	end
+
+	local panel = CreateFrame("Frame", "coolstatsTooltipOptionsPanel", UIParent)
+	panel.name = "Tooltip"
+	panel.parent = "coolstats"
+	panel.controls = {}
+	panel.refresh = coolstats.RefreshTooltipOptionsPanel
+	panel.default = coolstats.ResetTooltipOptionsPanelDefaults
+	panel.okay = function() end
+	panel.cancel = function() end
+	coolstats.tooltipOptionsPanel = panel
+
+	local content = CreateScrollableOptionsContent(panel, "coolstatsTooltipOptions", 410)
+	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
+	title:SetText("coolstats Tooltip")
+	title:SetTextColor(0.0, 0.75, 1.0)
+
+	CreateDescription(content, "Choose each coolstats feature that appears when hovering over players.", -42)
+	CreateHeading(content, "Player Details", -78)
+	CreateCheck(content, "coolstatsTooltipGuildRank", "Show guild rank", -104, function()
+		return GetTooltipOptions().guildRank ~= false
+	end, function(value)
+		GetTooltipOptions().guildRank = value
+	end, "Replace the default guild line with the player's guild rank and guild name.")
+	CreateCheck(content, "coolstatsTooltipClassLine", "Show class line", -132, function()
+		return GetTooltipOptions().classLine ~= false
+	end, function(value)
+		GetTooltipOptions().classLine = value
+	end, "Add a class-colored class name to player tooltips.")
+	CreateCheck(content, "coolstatsTooltipTarget", "Show current target", -160, function()
+		return GetTooltipOptions().target ~= false
+	end, function(value)
+		GetTooltipOptions().target = value
+	end, "Show who the hovered player is currently targeting.")
+	CreateCheck(content, "coolstatsTooltipCacheHover", "Cache inspectable gear on hover", -188, function()
+		return GetTooltipOptions().cacheOnHover ~= false
+	end, function(value)
+		GetTooltipOptions().cacheOnHover = value
+	end, "Allow hovering an inspectable player to update their cached gear.")
+
+	CreateHeading(content, "Logs And Progress", -232)
+	CreateCheck(content, "coolstatsTooltipLogsSummary", "Show logs summary", -258, function()
+		return GetTooltipOptions().logsSummary ~= false
+	end, function(value)
+		GetTooltipOptions().logsSummary = value
+	end, "Show the player's best available logs score.")
+	CreateCheck(content, "coolstatsTooltipLogsBosses", "Show boss parses while holding Alt", -286, function()
+		return GetTooltipOptions().logsBossDetails ~= false
+	end, function(value)
+		GetTooltipOptions().logsBossDetails = value
+	end, "Show individual boss parses while Alt is held.")
+	CreateCheck(content, "coolstatsTooltipRaidFallback", "Show raid progress summary", -314, function()
+		return GetTooltipOptions().raidProgressFallback ~= false
+	end, function(value)
+		GetTooltipOptions().raidProgressFallback = value
+	end, "Use available logs for raid progress, or request achievement progress as a fallback when logs are missing.")
+
+	if InterfaceOptions_AddCategory then
+		InterfaceOptions_AddCategory(panel)
+	end
+	panel:SetScript("OnShow", coolstats.RefreshTooltipOptionsPanel)
+	coolstats.RefreshTooltipOptionsPanel()
+	return panel
 end
 
 function coolstats.CreateItemLevelOptionsPanel()
@@ -1096,6 +1220,7 @@ function coolstats.CreateOptionsPanel()
 	end
 	coolstats.CreateItemLevelOptionsPanel()
 	coolstats.CreateBackgroundOptionsPanel()
+	coolstats.CreateTooltipOptionsPanel()
 	panel:SetScript("OnShow", coolstats.RefreshOptionsPanel)
 	coolstats.RefreshOptionsPanel()
 	return panel

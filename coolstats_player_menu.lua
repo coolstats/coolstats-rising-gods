@@ -3,7 +3,6 @@ local coolstats = _G.coolstats or {}
 local UWU_LOGS_BUTTON = "COOLSTATS_UWU_LOGS"
 local UWU_LOGS_TEXT = "|cffffd100UWU Logs|r"
 local TARGET_PLAYER_BUTTON = "COOLSTATS_TARGET_PLAYER"
-local TARGET_PLAYER_TEXT = TARGET or "Target"
 
 local function Print(message)
 	if DEFAULT_CHAT_FRAME then
@@ -155,20 +154,21 @@ local function AddCoolstatsActionsToPlayerMenus()
 		return false
 	end
 
-	ConfigurePopupButton(TARGET_PLAYER_BUTTON, TARGET_PLAYER_TEXT)
 	ConfigurePopupButton(UWU_LOGS_BUTTON, UWU_LOGS_TEXT)
 
 	for menuName, menu in pairs(UnitPopupMenus) do
-		if type(menu) == "table" and MenuLooksPlayerRelated(menuName, menu) then
-			if menuName ~= "SELF" and not MenuHasButton(menu, TARGET_PLAYER_BUTTON) then
-				table.insert(menu, GetInsertIndex(menu), TARGET_PLAYER_BUTTON)
+		if type(menu) == "table" then
+			for index = #menu, 1, -1 do
+				if menu[index] == TARGET_PLAYER_BUTTON then
+					table.remove(menu, index)
+				end
 			end
-			if not MenuHasButton(menu, UWU_LOGS_BUTTON) then
-				local targetIndex = GetButtonIndex(menu, TARGET_PLAYER_BUTTON)
-				table.insert(menu, targetIndex and (targetIndex + 1) or GetInsertIndex(menu), UWU_LOGS_BUTTON)
+			if MenuLooksPlayerRelated(menuName, menu) and not MenuHasButton(menu, UWU_LOGS_BUTTON) then
+				table.insert(menu, GetInsertIndex(menu), UWU_LOGS_BUTTON)
 			end
 		end
 	end
+	UnitPopupButtons[TARGET_PLAYER_BUTTON] = nil
 
 	return true
 end
@@ -193,27 +193,16 @@ local function OpenUwULogsForMenuPlayer(button)
 	end
 end
 
-local function TargetMenuPlayer(button)
-	local name = CleanPlayerName(GetDropdownPlayerName(button))
-	if name == "" or not TargetByName then
-		return
-	end
-	TargetByName(name, true)
-end
-
 local function OnUnitPopupClick(button)
 	if not button then
 		return
 	end
 
-	if button.value == TARGET_PLAYER_BUTTON then
-		TargetMenuPlayer(button)
-	elseif button.value == UWU_LOGS_BUTTON then
-		OpenUwULogsForMenuPlayer(button)
-	else
+	if button.value ~= UWU_LOGS_BUTTON then
 		return
 	end
 
+	OpenUwULogsForMenuPlayer(button)
 	if CloseDropDownMenus then
 		CloseDropDownMenus()
 	end
@@ -249,7 +238,10 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(_, event, addonName)
-	if event == "ADDON_LOADED" and addonName ~= "coolstats" then
+	if event == "ADDON_LOADED" then
+		if addonName == "coolstats" then
+			InitializeUwULogsPlayerMenu()
+		end
 		return
 	end
 	InitializeUwULogsPlayerMenu()

@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Cache
+## Notes: Isolated cached gear and talent snapshots for coolstats.
+## Author: coolstats
+## Version: 0.2.14
+## SavedVariables: coolstatsCacheDB
+
+coolstats_Cache.lua

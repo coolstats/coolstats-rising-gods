@@ -75,8 +75,14 @@ local UWU_INSPECT_SPEC_TAB_LEFT = 0
 local UWU_INSPECT_SPEC_TAB_TOP = -50
 local UWU_INSPECT_SPEC_TAB_BG_LEFT = -3
 local UWU_INSPECT_SPEC_TAB_BG_TOP = 11
-local UWU_GEAR_CACHE_MAX_PLAYERS = 1500
-local UWU_GEAR_CACHE_MAX_AGE_SECONDS = SECONDS_PER_DAY * 14
+-- Large SavedVariables chunks can silently fail to load on the 3.3.5 client.
+-- Normalized talent snapshots share one catalog per class and only retain
+-- per-player rank strings, but keep a conservative cap while v2 rolls out.
+coolstats.CACHE_LIMITS = {
+	gearPlayers = 500,
+	talentPlayers = 500,
+	maxAgeSeconds = SECONDS_PER_DAY * 14,
+}
 local UWU_CACHED_GEAR_PANEL_WIDTH = 274
 local UWU_CACHED_GEAR_PANEL_HEIGHT = 430
 local UWU_CACHED_GEAR_PANEL_GAP = 5
@@ -391,6 +397,9 @@ function coolstats.TouchManagedWindow(frame)
 	for _, button in ipairs(frame.specButtons or {}) do
 		button:SetFrameLevel(frame:GetFrameLevel() + 7)
 	end
+	if frame.trees and frame.talentButtons then
+		coolstats.SyncCachedTalentPanelFrameLevels(frame)
+	end
 	if frame.cachedGearPanel then
 		frame.cachedGearPanel:SetFrameStrata("DIALOG")
 		frame.cachedGearPanel:SetFrameLevel(frame:GetFrameLevel() + 1)
@@ -517,12 +526,112 @@ local function GetCacheLifetimeForProgress(progress)
 	return RAID_PROGRESS_CACHE_SECONDS
 end
 
+function coolstats.GetTooltipFeatureOptions()
+	if coolstats.GetTooltipOptions then
+		return coolstats.GetTooltipOptions()
+	end
+	coolstatsDB = coolstatsDB or {}
+	coolstatsDB.tooltip = coolstatsDB.tooltip or {}
+	return coolstatsDB.tooltip
+end
+
+function coolstats.MergeCachedPlayerStoreRoots(target, source)
+	if type(target) ~= "table" or type(source) ~= "table" or target == source then
+		return target
+	end
+	target.realms = target.realms or {}
+	for realmKey, sourceStore in pairs(source.realms or {}) do
+		local targetStore = target.realms[realmKey] or { players = {}, order = {} }
+		targetStore.players = targetStore.players or {}
+		targetStore.order = targetStore.order or {}
+		for key, snapshot in pairs(sourceStore.players or {}) do
+			local existing = targetStore.players[key]
+			if not existing or (tonumber(snapshot and snapshot.seenAt) or 0) >= (tonumber(existing and existing.seenAt) or 0) then
+				targetStore.players[key] = snapshot
+			end
+		end
+		local seen = {}
+		local mergedOrder = {}
+		for _, order in ipairs({ sourceStore.order or {}, targetStore.order or {} }) do
+			for _, key in ipairs(order) do
+				if key and targetStore.players[key] and not seen[key] then
+					seen[key] = true
+					mergedOrder[#mergedOrder + 1] = key
+				end
+			end
+		end
+		for key in pairs(targetStore.players) do
+			if not seen[key] then
+				mergedOrder[#mergedOrder + 1] = key
+			end
+		end
+		targetStore.order = mergedOrder
+		target.realms[realmKey] = targetStore
+	end
+	target.realmCacheVersion = math.max(tonumber(target.realmCacheVersion) or 0, tonumber(source.realmCacheVersion) or 0)
+	return target
+end
+
+function coolstats.GetCacheDatabase()
+	if type(coolstatsCacheDB) == "table" then
+		return coolstatsCacheDB
+	end
+	if type(coolstatsDB) == "table" and (
+		type(coolstatsDB.cachedInspectGear) == "table"
+		or type(coolstatsDB.cachedInspectTalents) == "table"
+		or type(coolstatsDB.cachedTalentCatalogs) == "table"
+	) then
+		return coolstatsDB
+	end
+	coolstats.runtimeCacheDB = coolstats.runtimeCacheDB or {}
+	return coolstats.runtimeCacheDB
+end
+
+function coolstats.MigrateSplitCacheDatabase()
+	if type(coolstatsCacheDB) ~= "table" or type(coolstatsDB) ~= "table" then
+		return coolstats.GetCacheDatabase()
+	end
+	for _, field in ipairs({ "cachedInspectGear", "cachedInspectTalents" }) do
+		local source = coolstatsDB[field]
+		if type(source) == "table" then
+			if type(coolstatsCacheDB[field]) ~= "table" then
+				coolstatsCacheDB[field] = source
+			else
+				coolstats.MergeCachedPlayerStoreRoots(coolstatsCacheDB[field], source)
+			end
+			coolstatsDB[field] = nil
+		end
+	end
+	if type(coolstatsDB.cachedTalentCatalogs) == "table" then
+		coolstatsCacheDB.cachedTalentCatalogs = coolstatsCacheDB.cachedTalentCatalogs or { version = 2, classes = {} }
+		coolstatsCacheDB.cachedTalentCatalogs.classes = coolstatsCacheDB.cachedTalentCatalogs.classes or {}
+		for classFile, catalog in pairs(coolstatsDB.cachedTalentCatalogs.classes or {}) do
+			if not coolstatsCacheDB.cachedTalentCatalogs.classes[classFile] then
+				coolstatsCacheDB.cachedTalentCatalogs.classes[classFile] = catalog
+			end
+		end
+		coolstatsCacheDB.cachedTalentCatalogs.version = math.max(tonumber(coolstatsCacheDB.cachedTalentCatalogs.version) or 0, tonumber(coolstatsDB.cachedTalentCatalogs.version) or 0)
+		coolstatsDB.cachedTalentCatalogs = nil
+	end
+	coolstatsCacheDB.splitCacheVersion = 1
+	return coolstatsCacheDB
+end
+
 local function EnsureTooltipDatabase()
 	coolstatsDB = coolstatsDB or {}
 	coolstatsDB.tooltip = coolstatsDB.tooltip or {}
 	coolstatsDB.tooltip.raidProgress = nil
-	coolstatsDB.cachedInspectGear = coolstatsDB.cachedInspectGear or {}
-	coolstatsDB.cachedInspectTalents = coolstatsDB.cachedInspectTalents or {}
+	local cacheDB = coolstats.MigrateSplitCacheDatabase()
+	cacheDB.cachedInspectGear = cacheDB.cachedInspectGear or {}
+	cacheDB.cachedInspectTalents = cacheDB.cachedInspectTalents or {}
+	cacheDB.cachedTalentCatalogs = cacheDB.cachedTalentCatalogs or { version = 2, classes = {} }
+	cacheDB.cachedTalentCatalogs.classes = cacheDB.cachedTalentCatalogs.classes or {}
+	if coolstatsStaticTalentCatalogs and cacheDB.embeddedTalentCatalogVersion ~= 1 then
+		for classFile in pairs(coolstatsStaticTalentCatalogs.classes or {}) do
+			cacheDB.cachedTalentCatalogs.classes[classFile] = nil
+		end
+		cacheDB.embeddedTalentCatalogVersion = 1
+	end
 	coolstatsDB.cachedPlayerBrowserFavorites = coolstatsDB.cachedPlayerBrowserFavorites or {}
 end
 
@@ -587,12 +696,12 @@ end
 
 local function GetCachedGearStore()
 	EnsureTooltipDatabase()
-	return coolstats.GetCachedPlayerRealmStore(coolstatsDB.cachedInspectGear)
+	return coolstats.GetCachedPlayerRealmStore(coolstats.GetCacheDatabase().cachedInspectGear)
 end
 
 function coolstats.GetCachedTalentStore()
 	EnsureTooltipDatabase()
-	return coolstats.GetCachedPlayerRealmStore(coolstatsDB.cachedInspectTalents)
+	return coolstats.GetCachedPlayerRealmStore(coolstats.GetCacheDatabase().cachedInspectTalents)
 end
 
 function coolstats.CachedTalentGroupMatchesClass(group, classFile)
@@ -621,7 +730,14 @@ function coolstats.CachedTalentSnapshotMatchesClass(snapshot)
 	end
 
 	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
-	if not classFile or not snapshot.groups or #snapshot.groups == 0 then
+	if not classFile then
+		return false
+	end
+	if snapshot.talentVersion == 2 then
+		local catalog = coolstats.GetCachedTalentCatalog(classFile)
+		return catalog and catalog.classFile == classFile and type(snapshot.rankGroups) == "table" and #snapshot.rankGroups > 0
+	end
+	if not snapshot.groups or #snapshot.groups == 0 then
 		return false
 	end
 	for _, group in ipairs(snapshot.groups) do
@@ -630,6 +746,272 @@ function coolstats.CachedTalentSnapshotMatchesClass(snapshot)
 		end
 	end
 	return true
+end
+
+function coolstats.GetCachedTalentValue(talent, key, compactIndex)
+	if not talent then
+		return nil
+	end
+	if talent[key] ~= nil then
+		return talent[key]
+	end
+	return talent[compactIndex]
+end
+
+function coolstats.GetCachedTalentCatalogStore()
+	EnsureTooltipDatabase()
+	return coolstats.GetCacheDatabase().cachedTalentCatalogs
+end
+
+function coolstats.GetCachedTalentCatalog(classFile)
+	if not classFile then
+		return nil
+	end
+	local store = coolstats.GetCachedTalentCatalogStore()
+	local catalog = store and store.classes and store.classes[classFile]
+	if catalog then
+		return catalog
+	end
+	local staticStore = coolstatsStaticTalentCatalogs
+	return staticStore and staticStore.classes and staticStore.classes[classFile] or nil
+end
+
+function coolstats.ExtractCachedTalentId(link)
+	if not link then
+		return nil
+	end
+	return tonumber(string.match(tostring(link), "talent:(%d+):"))
+end
+
+function coolstats.BuildCachedTalentLink(talentId, rank, talentName, fallbackLink)
+	talentId = tonumber(talentId)
+	if not talentId then
+		return fallbackLink
+	end
+	rank = tonumber(rank) or 0
+	return "|cff4e96f7|Htalent:" .. tostring(talentId) .. ":" .. tostring(rank > 0 and rank - 1 or -1) .. "|h[" .. tostring(talentName or "Talent") .. "]|h|r"
+end
+
+function coolstats.BuildCachedTalentCatalog(snapshot)
+	if not snapshot or snapshot.missing or snapshot.talentVersion == 2 or type(snapshot.groups) ~= "table" then
+		return nil
+	end
+	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
+	if not classFile then
+		return nil
+	end
+	local sourceGroup
+	for _, group in ipairs(snapshot.groups) do
+		if coolstats.CachedTalentGroupMatchesClass(group, classFile) then
+			sourceGroup = group
+			break
+		end
+	end
+	if not sourceGroup or type(sourceGroup.tabs) ~= "table" or #sourceGroup.tabs == 0 then
+		return nil
+	end
+	local catalog = {
+		version = 2,
+		classFile = classFile,
+		tabs = {},
+	}
+	for tabIndex, tab in ipairs(sourceGroup.tabs) do
+		local catalogTab = {
+			name = tab.name,
+			icon = tab.icon,
+			background = tab.background,
+			talents = {},
+		}
+		for talentIndex, talent in ipairs(tab.talents or {}) do
+			local talentLink = coolstats.GetCachedTalentValue(talent, "link", 10)
+			catalogTab.talents[talentIndex] = {
+				coolstats.GetCachedTalentValue(talent, "name", 1),
+				coolstats.GetCachedTalentValue(talent, "icon", 2),
+				coolstats.GetCachedTalentValue(talent, "tier", 3),
+				coolstats.GetCachedTalentValue(talent, "column", 4),
+				coolstats.GetCachedTalentValue(talent, "maxRank", 6),
+				coolstats.GetCachedTalentValue(talent, "exceptional", 7),
+				coolstats.GetCachedTalentValue(talent, "prereqTier", 8),
+				coolstats.GetCachedTalentValue(talent, "prereqColumn", 9),
+				coolstats.ExtractCachedTalentId(talentLink),
+				talentLink,
+			}
+		end
+		catalog.tabs[tabIndex] = catalogTab
+	end
+	return catalog
+end
+
+function coolstats.CachedTalentCatalogMatchesSnapshot(catalog, snapshot)
+	if not catalog or not snapshot or type(catalog.tabs) ~= "table" or type(snapshot.groups) ~= "table" then
+		return false
+	end
+	local sourceGroup = snapshot.groups[1]
+	if not sourceGroup or type(sourceGroup.tabs) ~= "table" or #sourceGroup.tabs ~= #catalog.tabs then
+		return false
+	end
+	for tabIndex, catalogTab in ipairs(catalog.tabs) do
+		local tab = sourceGroup.tabs[tabIndex]
+		if not tab or #catalogTab.talents ~= #(tab.talents or {}) then
+			return false
+		end
+		for talentIndex, catalogTalent in ipairs(catalogTab.talents) do
+			local talent = tab.talents[talentIndex]
+			if not talent
+				or tostring(catalogTalent[1] or "") ~= tostring(coolstats.GetCachedTalentValue(talent, "name", 1) or "")
+				or tonumber(catalogTalent[3]) ~= tonumber(coolstats.GetCachedTalentValue(talent, "tier", 3))
+				or tonumber(catalogTalent[4]) ~= tonumber(coolstats.GetCachedTalentValue(talent, "column", 4))
+				or tonumber(catalogTalent[5]) ~= tonumber(coolstats.GetCachedTalentValue(talent, "maxRank", 6))
+			then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+function coolstats.EncodeCachedTalentGroupRanks(group, catalog)
+	if not group or not catalog then
+		return nil
+	end
+	local ranks = {}
+	for tabIndex, catalogTab in ipairs(catalog.tabs or {}) do
+		local tab = group.tabs and group.tabs[tabIndex]
+		if not tab or #(tab.talents or {}) ~= #(catalogTab.talents or {}) then
+			return nil
+		end
+		for talentIndex = 1, #catalogTab.talents do
+			local rank = tonumber(coolstats.GetCachedTalentValue(tab.talents[talentIndex], "rank", 5)) or 0
+			rank = math.max(0, math.min(9, math.floor(rank)))
+			ranks[#ranks + 1] = tostring(rank)
+		end
+	end
+	return table.concat(ranks)
+end
+
+function coolstats.NormalizeCachedTalentSnapshot(snapshot)
+	if not snapshot or snapshot.missing or snapshot.talentVersion == 2 or type(snapshot.groups) ~= "table" then
+		return snapshot
+	end
+	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
+	if not classFile then
+		return snapshot
+	end
+	for _, group in ipairs(snapshot.groups) do
+		if not coolstats.CachedTalentGroupMatchesClass(group, classFile) then
+			return snapshot
+		end
+	end
+	local catalogStore = coolstats.GetCachedTalentCatalogStore()
+	local catalog = coolstats.GetCachedTalentCatalog(classFile)
+	if not catalog then
+		catalog = coolstats.BuildCachedTalentCatalog(snapshot)
+		if not catalog then
+			return snapshot
+		end
+		catalogStore.classes[classFile] = catalog
+	end
+	if not coolstats.CachedTalentCatalogMatchesSnapshot(catalog, snapshot) then
+		return snapshot
+	end
+	local rankGroups = {}
+	for groupIndex, group in ipairs(snapshot.groups) do
+		local ranks = coolstats.EncodeCachedTalentGroupRanks(group, catalog)
+		if not ranks then
+			return snapshot
+		end
+		rankGroups[groupIndex] = { tonumber(group.group) or groupIndex, ranks }
+	end
+	snapshot.talentVersion = 2
+	snapshot.rankGroups = rankGroups
+	snapshot.groups = nil
+	snapshot.compactVersion = nil
+	return snapshot
+end
+
+function coolstats.GetCachedTalentGroups(snapshot)
+	if not snapshot then
+		return nil
+	end
+	if snapshot.talentVersion ~= 2 then
+		return snapshot.groups
+	end
+	local classFile = snapshot.classFile or UWU_CLASS_FILE_BY_INDEX[snapshot.classIndex]
+	local catalog = coolstats.GetCachedTalentCatalog(classFile)
+	if not catalog or type(snapshot.rankGroups) ~= "table" then
+		return nil
+	end
+	local groups = {}
+	for groupIndex, rankGroup in ipairs(snapshot.rankGroups) do
+		local ranks = rankGroup[2] or ""
+		local offset = 1
+		local groupPoints = 0
+		local tabs = {}
+		for tabIndex, catalogTab in ipairs(catalog.tabs or {}) do
+			local tabPoints = 0
+			local talents = {}
+			for talentIndex, catalogTalent in ipairs(catalogTab.talents or {}) do
+				local rank = tonumber(string.sub(ranks, offset, offset)) or 0
+				offset = offset + 1
+				tabPoints = tabPoints + rank
+				talents[talentIndex] = {
+					catalogTalent[1],
+					catalogTalent[2],
+					catalogTalent[3],
+					catalogTalent[4],
+					rank,
+					catalogTalent[5],
+					catalogTalent[6],
+					catalogTalent[7],
+					catalogTalent[8],
+					coolstats.BuildCachedTalentLink(catalogTalent[9], rank, catalogTalent[1], catalogTalent[10]),
+				}
+			end
+			groupPoints = groupPoints + tabPoints
+			tabs[tabIndex] = {
+				name = catalogTab.name,
+				icon = catalogTab.icon,
+				points = tabPoints,
+				background = catalogTab.background,
+				talents = talents,
+			}
+		end
+		groups[groupIndex] = {
+			group = tonumber(rankGroup[1]) or groupIndex,
+			active = groupIndex == (tonumber(snapshot.activeGroup) or 1),
+			points = groupPoints,
+			tabs = tabs,
+		}
+	end
+	return groups
+end
+
+function coolstats.CompactCachedTalentSnapshot(snapshot)
+	if not snapshot or snapshot.missing or snapshot.talentVersion == 2 or snapshot.compactVersion == 1 then
+		return snapshot
+	end
+	for _, group in ipairs(snapshot.groups or {}) do
+		for _, tab in ipairs(group.tabs or {}) do
+			for index, talent in ipairs(tab.talents or {}) do
+				if talent.name ~= nil then
+					tab.talents[index] = {
+						talent.name,
+						talent.icon,
+						talent.tier,
+						talent.column,
+						talent.rank,
+						talent.maxRank,
+						talent.exceptional or nil,
+						talent.prereqTier,
+						talent.prereqColumn,
+						talent.link,
+					}
+				end
+			end
+		end
+	end
+	snapshot.compactVersion = 1
+	return snapshot
 end
 
 local function PruneCachedGearCache(force)
@@ -645,14 +1027,14 @@ local function PruneCachedGearCache(force)
 	for index = #order, 1, -1 do
 		local key = order[index]
 		local snapshot = key and players[key]
-		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > coolstats.CACHE_LIMITS.maxAgeSeconds then
 			if key then
 				players[key] = nil
 			end
 			table.remove(order, index)
 		end
 	end
-	while #order > UWU_GEAR_CACHE_MAX_PLAYERS do
+	while #order > coolstats.CACHE_LIMITS.gearPlayers do
 		local staleKey = table.remove(order)
 		if staleKey then
 			players[staleKey] = nil
@@ -671,7 +1053,7 @@ local function TouchCachedGearKey(store, key)
 		end
 	end
 	table.insert(order, 1, key)
-	while #order > UWU_GEAR_CACHE_MAX_PLAYERS do
+	while #order > coolstats.CACHE_LIMITS.gearPlayers do
 		local staleKey = table.remove(order)
 		if staleKey then
 			store.players[staleKey] = nil
@@ -698,21 +1080,23 @@ function coolstats.PruneCachedTalentCache(force)
 	local players = store.players
 	local order = store.order
 	for key, snapshot in pairs(players) do
-		if not snapshot or not coolstats.CachedTalentSnapshotMatchesClass(snapshot) or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+		coolstats.CompactCachedTalentSnapshot(snapshot)
+		coolstats.NormalizeCachedTalentSnapshot(snapshot)
+		if not snapshot or not coolstats.CachedTalentSnapshotMatchesClass(snapshot) or now - (tonumber(snapshot.seenAt) or 0) > coolstats.CACHE_LIMITS.maxAgeSeconds then
 			players[key] = nil
 		end
 	end
 	for index = #order, 1, -1 do
 		local key = order[index]
 		local snapshot = key and players[key]
-		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > UWU_GEAR_CACHE_MAX_AGE_SECONDS then
+		if not key or not snapshot or now - (tonumber(snapshot.seenAt) or 0) > coolstats.CACHE_LIMITS.maxAgeSeconds then
 			if key then
 				players[key] = nil
 			end
 			table.remove(order, index)
 		end
 	end
-	while #order > UWU_GEAR_CACHE_MAX_PLAYERS do
+	while #order > coolstats.CACHE_LIMITS.talentPlayers do
 		local staleKey = table.remove(order)
 		if staleKey then
 			players[staleKey] = nil
@@ -731,7 +1115,7 @@ function coolstats.TouchCachedTalentKey(store, key)
 		end
 	end
 	table.insert(order, 1, key)
-	while #order > UWU_GEAR_CACHE_MAX_PLAYERS do
+	while #order > coolstats.CACHE_LIMITS.talentPlayers do
 		local staleKey = table.remove(order)
 		if staleKey then
 			store.players[staleKey] = nil
@@ -749,6 +1133,8 @@ function coolstats.GetCachedTalentSnapshot(name)
 	local key = GetCachedGearKeyForName(name)
 	local store = key and coolstats.GetCachedTalentStore()
 	local snapshot = store and store.players[key] or nil
+	coolstats.CompactCachedTalentSnapshot(snapshot)
+	coolstats.NormalizeCachedTalentSnapshot(snapshot)
 	if snapshot and not coolstats.CachedTalentSnapshotMatchesClass(snapshot) then
 		store.players[key] = nil
 		for index = #store.order, 1, -1 do
@@ -1101,21 +1487,16 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 						local talentLink = coolstats.GetCachedTalentLink(tabIndex, talentIndex, isInspect, groupIndex)
 						rankedTalents = rankedTalents + 1
 						talents[#talents + 1] = {
-							name = talentName,
-							icon = talentIcon,
-							link = talentLink,
-							tabIndex = tabIndex,
-							talentIndex = talentIndex,
-							groupIndex = groupIndex,
-							tier = tonumber(tier) or 1,
-							column = tonumber(column) or 1,
-							rank = currentRank,
-							maxRank = maxRank,
-							exceptional = isExceptional and true or false,
-							meetsPrereq = meetsPrereq ~= false,
-							prereqTier = prereqTier,
-							prereqColumn = prereqColumn,
-							prereqMet = prereqMet ~= false,
+							talentName,
+							talentIcon,
+							tonumber(tier) or 1,
+							tonumber(column) or 1,
+							currentRank,
+							maxRank,
+							isExceptional and true or nil,
+							prereqTier,
+							prereqColumn,
+							talentLink,
 						}
 					end
 				end
@@ -1164,10 +1545,12 @@ function coolstats.CacheInspectTalentsForUnit(unit)
 		seenAt = GetNowSeconds(),
 		activeGroup = activeGroupIndex,
 		groups = groups,
+		compactVersion = 1,
 	}
 	if not coolstats.CachedTalentSnapshotMatchesClass(snapshot) then
 		return nil, false
 	end
+	coolstats.NormalizeCachedTalentSnapshot(snapshot)
 	store.players[key] = snapshot
 	coolstats.TouchCachedTalentKey(store, key)
 	coolstats.PruneCachedTalentCache(false)
@@ -2356,29 +2739,36 @@ local function GetUwUTooltipCache(player)
 end
 
 local function AddUwULogsLines(unit)
+	local options = coolstats.GetTooltipFeatureOptions()
+	if options.logsSummary == false and options.logsBossDetails == false then
+		return false
+	end
 	local data = coolstatsUwUData
 	if not data or not data.players then
-		return
+		return false
 	end
 
 	local name = UnitName(unit)
 	local player = name and GetUwUPlayerByName(name)
 	if not player then
 		local level = UnitLevel(unit)
-		if level and level >= 80 then
+		if options.logsSummary ~= false and level and level >= 80 then
 			GameTooltip:AddDoubleLine("UwU Logs Raid Score", "Not ranked", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.45, 0.45, 0.45)
 		end
-		return
+		return false
 	end
 
 	local cache = GetUwUTooltipCache(player)
-	AddCachedUwUTooltipLine(cache.base)
+	if options.logsSummary ~= false then
+		AddCachedUwUTooltipLine(cache.base)
+	end
 
-	if IsAltKeyDown and IsAltKeyDown() then
+	if options.logsBossDetails ~= false and IsAltKeyDown and IsAltKeyDown() then
 		for index = 1, #cache.details do
 			AddCachedUwUTooltipLine(cache.details[index])
 		end
 	end
+	return true
 end
 
 GetInspectUwUUnit = function()
@@ -3551,6 +3941,588 @@ function coolstats.OpenLogsCompareWithName(name)
 	return comparePlayer ~= nil
 end
 
+function coolstats.FormatLogAnalysisDifference(value, suffix)
+	value = tonumber(value) or 0
+	local prefix = value > 0 and "+" or ""
+	return prefix .. string.format("%.2f", value) .. tostring(suffix or "")
+end
+
+function coolstats.GetLogAnalysisDifferenceColor(value)
+	value = tonumber(value) or 0
+	if value > 0 then
+		return 0.25, 1.0, 0.25
+	elseif value < 0 then
+		return 1.0, 0.3, 0.25
+	end
+	return 0.72, 0.72, 0.68
+end
+
+function coolstats.CanOpenLogAnalysisWithName(name)
+	local selfPlayer = GetUwUPlayerByName(UnitName("player") or "")
+	local comparePlayer = GetUwUPlayerByName(name)
+	if not selfPlayer then
+		return false, "Your character needs logs before it can be compared."
+	end
+	if not comparePlayer then
+		return false, "This player does not have logs in the current database."
+	end
+	if selfPlayer[3] ~= comparePlayer[3] then
+		return false, "Log Analysis is only available for players of your class."
+	end
+	return true, nil, selfPlayer, comparePlayer
+end
+
+function coolstats.LogAnalysisSpecButton_OnEnter(self)
+	if not self.specName then
+		return
+	end
+	GameTooltip:SetOwner(self, self.analysisSide == "self" and "ANCHOR_RIGHT" or "ANCHOR_LEFT")
+	GameTooltip:AddLine((self.analysisSide == "self" and "Your " or "Their ") .. self.specName, 1.0, 0.82, 0)
+	local red, green, blue = GetUwUScoreColor(self.scoreCenti)
+	GameTooltip:AddDoubleLine("Raid Score", FormatUwUScoreWithRank(self.scoreCenti, self.rank), ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, red, green, blue)
+	GameTooltip:Show()
+end
+
+function coolstats.LogAnalysisSpecButton_OnClick(self)
+	local panel = self.analysisPanel
+	if not panel or not self.specIndex then
+		return
+	end
+	if self.analysisSide == "self" then
+		panel.selfSpecIndex = self.specIndex
+	else
+		panel.compareSpecIndex = self.specIndex
+	end
+	if PlaySound then
+		PlaySound("igCharacterInfoTab")
+	end
+	coolstats.RenderLogAnalysisPanel(panel)
+end
+
+function coolstats.UpdateLogAnalysisSpecButtons(panel, side, player, selectedSpecIndex)
+	local buttons = side == "self" and panel.selfSpecButtons or panel.compareSpecButtons
+	local choices = player and BuildUwUSpecChoices(player) or {}
+	for index = 1, #buttons do
+		local button = buttons[index]
+		local choice = choices[index]
+		if choice then
+			button.analysisPanel = panel
+			button.analysisSide = side
+			button.specIndex = choice.specIndex
+			button.specName = choice.name
+			button.scoreCenti = choice.scoreCenti
+			button.rank = choice.rank
+			button:SetNormalTexture(GetUwUSpecIcon(player, choice.specIndex, nil))
+			local texture = button:GetNormalTexture()
+			if texture then
+				texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+			end
+			button:SetChecked(choice.specIndex == selectedSpecIndex)
+			button:SetAlpha(choice.specIndex == selectedSpecIndex and 1.0 or 0.68)
+			button:Show()
+		else
+			button:Hide()
+		end
+	end
+end
+
+function coolstats.AcquireLogAnalysisChartDot(chart, index)
+	local dot = chart.dots[index]
+	if dot then
+		return dot
+	end
+	dot = CreateFrame("Button", nil, chart)
+	SetFrameSize(dot, 9, 9)
+	local texture = dot:CreateTexture(nil, "OVERLAY")
+	texture:SetTexture("Interface\\Buttons\\WHITE8X8")
+	texture:SetAllPoints(dot)
+	dot.texture = texture
+	dot:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(self.playerLabel or "Player", self.red or 1, self.green or 1, self.blue or 1)
+		GameTooltip:AddDoubleLine(self.bossLabel or "Boss", self.parseText or "-", 0.86, 0.86, 0.78, self.red or 1, self.green or 1, self.blue or 1)
+		GameTooltip:Show()
+	end)
+	dot:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	chart.dots[index] = dot
+	return dot
+end
+
+function coolstats.AcquireLogAnalysisCurvePoint(chart, index)
+	local point = chart.curvePoints[index]
+	if point then
+		return point
+	end
+	point = chart:CreateTexture(nil, "ARTWORK")
+	point:SetTexture("Interface\\Buttons\\WHITE8X8")
+	SetFrameSize(point, 3, 3)
+	chart.curvePoints[index] = point
+	return point
+end
+
+function coolstats.GetLogAnalysisMainRaidBossIndexes()
+	local indexes = {}
+	local data = coolstatsUwUData
+	local mainRaidName = data and data.defaultRaidName
+	for bossIndex, bossName in ipairs((data and data.bosses) or {}) do
+		if GetUwUBossRaidName(bossName) == mainRaidName then
+			indexes[#indexes + 1] = bossIndex
+		end
+	end
+	return indexes
+end
+
+function coolstats.AddLogAnalysisCurveRun(chart, run, red, green, blue, startPointIndex)
+	if #run < 2 then
+		return startPointIndex
+	end
+	local samplesPerSegment = 10
+	for index = 1, #run - 1 do
+		local p0 = run[math.max(1, index - 1)]
+		local p1 = run[index]
+		local p2 = run[index + 1]
+		local p3 = run[math.min(#run, index + 2)]
+		for sample = 0, samplesPerSegment - 1 do
+			local t = sample / samplesPerSegment
+			local t2 = t * t
+			local t3 = t2 * t
+			local x = 0.5 * (
+				(2 * p1.x)
+				+ ((-p0.x + p2.x) * t)
+				+ ((2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2)
+				+ ((-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3)
+			)
+			local y = 0.5 * (
+				(2 * p1.y)
+				+ ((-p0.y + p2.y) * t)
+				+ ((2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2)
+				+ ((-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+			)
+			startPointIndex = startPointIndex + 1
+			local point = coolstats.AcquireLogAnalysisCurvePoint(chart, startPointIndex)
+			point:ClearAllPoints()
+			point:SetPoint("CENTER", chart, "BOTTOMLEFT", x, y)
+			point:SetVertexColor(red, green, blue, 0.84)
+			point:Show()
+		end
+	end
+	startPointIndex = startPointIndex + 1
+	local final = run[#run]
+	local point = coolstats.AcquireLogAnalysisCurvePoint(chart, startPointIndex)
+	point:ClearAllPoints()
+	point:SetPoint("CENTER", chart, "BOTTOMLEFT", final.x, final.y)
+	point:SetVertexColor(red, green, blue, 0.84)
+	point:Show()
+	return startPointIndex
+end
+
+function coolstats.RenderLogAnalysisChart(panel, selfPlayer, comparePlayer, selfBosses, compareBosses)
+	local chart = panel.chart
+	if not chart then
+		return
+	end
+	for _, dot in ipairs(chart.dots) do
+		dot:Hide()
+	end
+	for _, point in ipairs(chart.curvePoints) do
+		point:Hide()
+	end
+
+	local mainRaidBossIndexes = coolstats.GetLogAnalysisMainRaidBossIndexes()
+	local bossCount = #mainRaidBossIndexes
+	local plotLeft = 46
+	local plotRight = 882
+	local plotBottom = 36
+	local plotTop = 140
+	local plotWidth = plotRight - plotLeft
+	local plotHeight = plotTop - plotBottom
+	local selfScore = GetUwUSpecScoreCenti(selfPlayer, panel.selfSpecIndex)
+	local compareScore = GetUwUSpecScoreCenti(comparePlayer, panel.compareSpecIndex)
+	local selfR, selfG, selfB = GetUwUScoreColor(selfScore)
+	local compareR, compareG, compareB = GetUwUScoreColor(compareScore)
+	chart.selfLegend:SetText((selfPlayer[1] or "You") .. " " .. FormatUwUScore(selfScore))
+	chart.selfLegend:SetTextColor(selfR, selfG, selfB)
+	chart.compareLegend:SetText((comparePlayer[1] or "Compared") .. " " .. FormatUwUScore(compareScore))
+	chart.compareLegend:SetTextColor(compareR, compareG, compareB)
+
+	local dotIndex = 0
+	local curvePointIndex = 0
+	for seriesIndex, series in ipairs({
+		{ player = selfPlayer, bosses = selfBosses, red = selfR, green = selfG, blue = selfB },
+		{ player = comparePlayer, bosses = compareBosses, red = compareR, green = compareG, blue = compareB },
+	}) do
+		local run = {}
+		for chartIndex, bossIndex in ipairs(mainRaidBossIndexes) do
+			local bossName = coolstatsUwUData.bosses[bossIndex]
+			local score = GetUwUBossScoreCenti(series.bosses[bossIndex])
+			if score then
+				local x = bossCount > 1 and (plotLeft + (((chartIndex - 1) / (bossCount - 1)) * plotWidth)) or (plotLeft + (plotWidth / 2))
+				local y = plotBottom + (math.max(0, math.min(10000, score)) / 10000 * plotHeight)
+				run[#run + 1] = { x = x, y = y }
+				dotIndex = dotIndex + 1
+				local dot = coolstats.AcquireLogAnalysisChartDot(chart, dotIndex)
+				dot:ClearAllPoints()
+				dot:SetPoint("CENTER", chart, "BOTTOMLEFT", x, y)
+				dot.texture:SetVertexColor(series.red, series.green, series.blue, 1)
+				dot.playerLabel = series.player[1]
+				dot.bossLabel = GetUwUBossDisplayLabel(bossName)
+				dot.parseText = FormatUwUScore(score)
+				dot.red, dot.green, dot.blue = series.red, series.green, series.blue
+				dot:Show()
+			else
+				curvePointIndex = coolstats.AddLogAnalysisCurveRun(chart, run, series.red, series.green, series.blue, curvePointIndex)
+				run = {}
+			end
+		end
+		curvePointIndex = coolstats.AddLogAnalysisCurveRun(chart, run, series.red, series.green, series.blue, curvePointIndex)
+	end
+end
+
+function coolstats.CreateLogAnalysisPanel()
+	if coolstats.logAnalysisPanel then
+		return coolstats.logAnalysisPanel
+	end
+
+	local panel = CreateFrame("Frame", "coolstatsLogAnalysisPanel", UIParent)
+	coolstats.logAnalysisPanel = panel
+	SetFrameSize(panel, 1000, 720)
+	panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+	panel:SetFrameStrata("DIALOG")
+	panel:SetFrameLevel(96)
+	if panel.SetToplevel then
+		panel:SetToplevel(true)
+	end
+	panel:SetMovable(true)
+	panel:EnableMouse(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetScript("OnDragStart", function(self)
+		self:StartMoving()
+	end)
+	panel:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+	end)
+	if panel.SetClampedToScreen then
+		panel:SetClampedToScreen(true)
+	end
+	panel:SetBackdrop({
+		bgFile = "Interface\\Buttons\\WHITE8X8",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		tile = false,
+		edgeSize = 16,
+		insets = { left = 5, right = 5, top = 5, bottom = 5 },
+	})
+	panel:SetBackdropColor(0.02, 0.018, 0.014, 0.98)
+	panel:SetBackdropBorderColor(0.55, 0.52, 0.48, 1)
+	if coolstats.ApplyTabardPanelBackground then
+		coolstats.ApplyTabardPanelBackground(panel, 0.76, 0.52)
+	end
+
+	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
+	close:SetScript("OnClick", function()
+		panel:Hide()
+	end)
+
+	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOP", panel, "TOP", 0, -14)
+	title:SetText("Log Analysis")
+	title:SetTextColor(0.0, 0.75, 1.0)
+	panel.title = title
+
+	local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -4)
+	subtitle:SetWidth(900)
+	subtitle:SetJustifyH("CENTER")
+	subtitle:SetTextColor(0.78, 0.78, 0.72)
+	panel.subtitle = subtitle
+
+	local summary = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	summary:SetPoint("TOP", subtitle, "BOTTOM", 0, -8)
+	summary:SetWidth(900)
+	summary:SetJustifyH("CENTER")
+	summary:SetTextColor(1.0, 0.82, 0.16)
+	panel.summary = summary
+
+	local columns = {
+		{ "Boss", 0, 210, "CENTER" },
+		{ "Your Parse", 210, 110, "CENTER" },
+		{ "Their Parse", 320, 110, "CENTER" },
+		{ "Parse Diff", 430, 110, "CENTER" },
+		{ "Your DPS", 540, 110, "CENTER" },
+		{ "Their DPS", 650, 110, "CENTER" },
+		{ "DPS Diff", 760, 140, "CENTER" },
+	}
+	panel.analysisColumns = columns
+
+	local chartHeader = CreateFrame("Frame", nil, panel)
+	SetFrameSize(chartHeader, 900, 18)
+	chartHeader:SetPoint("BOTTOM", panel, "BOTTOM", 0, 188)
+	coolstats.ApplyCachedPlayerBrowserHeaderBackground(chartHeader)
+	local chartHeaderText = chartHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	chartHeaderText:SetAllPoints(chartHeader)
+	chartHeaderText:SetJustifyH("CENTER")
+	chartHeaderText:SetText("Parse Comparison")
+	chartHeaderText:SetTextColor(1.0, 0.82, 0.0)
+
+	local chart = CreateFrame("Frame", nil, panel)
+	SetFrameSize(chart, 900, 160)
+	chart:SetPoint("BOTTOM", panel, "BOTTOM", 0, 20)
+	chart:SetBackdrop({
+		bgFile = "Interface\\Buttons\\WHITE8X8",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+		edgeSize = 12,
+		insets = { left = 4, right = 4, top = 4, bottom = 4 },
+	})
+	chart:SetBackdropColor(0.02, 0.018, 0.014, 0.90)
+	chart:SetBackdropBorderColor(0.35, 0.42, 0.45, 0.90)
+	chart.dots = {}
+	chart.curvePoints = {}
+	for index, value in ipairs({ 0, 25, 50, 75, 100 }) do
+		local y = 36 + ((value / 100) * 104)
+		local grid = chart:CreateTexture(nil, "BACKGROUND")
+		grid:SetTexture("Interface\\Buttons\\WHITE8X8")
+		grid:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", 46, y)
+		grid:SetPoint("BOTTOMRIGHT", chart, "BOTTOMRIGHT", -18, y)
+		grid:SetHeight(1)
+		grid:SetVertexColor(0.45, 0.45, 0.45, index == 1 and 0.40 or 0.18)
+		local label = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		label:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", 8, y - 6)
+		label:SetWidth(30)
+		label:SetJustifyH("RIGHT")
+		label:SetText(tostring(value))
+		label:SetTextColor(0.62, 0.62, 0.58)
+	end
+	local selfLegend = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	selfLegend:SetPoint("BOTTOMRIGHT", chart, "BOTTOM", -10, 8)
+	selfLegend:SetWidth(360)
+	selfLegend:SetJustifyH("RIGHT")
+	chart.selfLegend = selfLegend
+	local compareLegend = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	compareLegend:SetPoint("BOTTOMLEFT", chart, "BOTTOM", 10, 8)
+	compareLegend:SetWidth(360)
+	compareLegend:SetJustifyH("LEFT")
+	chart.compareLegend = compareLegend
+	panel.chart = chart
+
+	panel.selfSpecButtons = {}
+	panel.compareSpecButtons = {}
+	panel.specButtons = {}
+	for index = 1, 3 do
+		for _, side in ipairs({ "self", "compare" }) do
+			local button = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			SetFrameSize(button, 34, 34)
+			if side == "self" then
+				button:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -108 - ((index - 1) * 38))
+				panel.selfSpecButtons[index] = button
+			else
+				button:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -108 - ((index - 1) * 38))
+				panel.compareSpecButtons[index] = button
+			end
+			button.analysisSide = side
+			button.analysisPanel = panel
+			button:SetScript("OnClick", coolstats.LogAnalysisSpecButton_OnClick)
+			button:SetScript("OnEnter", coolstats.LogAnalysisSpecButton_OnEnter)
+			button:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+			panel.specButtons[#panel.specButtons + 1] = button
+		end
+	end
+
+	panel.rows = {}
+	for index = 1, 22 do
+		local row = CreateFrame("Frame", nil, panel)
+		SetFrameSize(row, 900, 18)
+		row:SetPoint("TOP", panel, "TOP", 0, -92 - ((index - 1) * 18))
+		local bg = row:CreateTexture(nil, "BACKGROUND")
+		bg:SetAllPoints(row)
+		bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+		bg:SetVertexColor(index % 2 == 0 and 0.28 or 0.05, index % 2 == 0 and 0.27 or 0.06, index % 2 == 0 and 0.25 or 0.07, index % 2 == 0 and 0.24 or 0.12)
+		row.bg = bg
+		row.values = {}
+		for columnIndex, column in ipairs(columns) do
+			local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			text:SetPoint("LEFT", row, "LEFT", column[2], 0)
+			text:SetWidth(column[3])
+			text:SetJustifyH(column[4])
+			row.values[columnIndex] = text
+		end
+		local raidHeader = CreateFrame("Frame", nil, row)
+		raidHeader:SetAllPoints(row)
+		coolstats.ApplyCachedPlayerBrowserHeaderBackground(raidHeader)
+		local raidHeaderText = raidHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		raidHeaderText:SetAllPoints(raidHeader)
+		raidHeaderText:SetJustifyH("CENTER")
+		raidHeaderText:SetTextColor(1.0, 0.82, 0.0)
+		raidHeader.text = raidHeaderText
+		raidHeader:Hide()
+		row.raidHeader = raidHeader
+		row:Hide()
+		panel.rows[index] = row
+	end
+
+	panel:SetScript("OnShow", function()
+		if PlaySound then
+			PlaySound("igCharacterInfoOpen")
+		end
+	end)
+	panel:SetScript("OnHide", function()
+		if PlaySound then
+			PlaySound("igCharacterInfoClose")
+		end
+	end)
+	coolstats.RegisterManagedWindow(panel)
+	panel:Hide()
+	return panel
+end
+
+function coolstats.RenderLogAnalysisPanel(panel)
+	if not panel or not panel.selfPlayer or not panel.comparePlayer then
+		return
+	end
+	local selfPlayer = panel.selfPlayer
+	local comparePlayer = panel.comparePlayer
+	local selfName = selfPlayer[1] or UnitName("player") or "You"
+	local compareName = comparePlayer[1] or panel.compareName or "Player"
+	local selfSpec = panel.selfSpecIndex or selfPlayer[4]
+	local compareSpec = panel.compareSpecIndex or comparePlayer[4]
+	local selfBosses = GetUwUSpecBossData(selfPlayer, selfSpec) or {}
+	local compareBosses = GetUwUSpecBossData(comparePlayer, compareSpec) or {}
+	coolstats.UpdateLogAnalysisSpecButtons(panel, "self", selfPlayer, selfSpec)
+	coolstats.UpdateLogAnalysisSpecButtons(panel, "compare", comparePlayer, compareSpec)
+	panel.subtitle:SetText(
+		selfName
+			.. " ("
+			.. tostring(GetUwUSpecName(selfPlayer, selfSpec) or "Unknown")
+			.. ") vs "
+			.. compareName
+			.. " ("
+			.. tostring(GetUwUSpecName(comparePlayer, compareSpec) or "Unknown")
+			.. ")"
+	)
+
+	local compared = 0
+	local parseDifferenceTotal = 0
+	local dpsDifferenceTotal = 0
+	for index = 1, #panel.rows do
+		panel.rows[index].raidHeader:Hide()
+		panel.rows[index]:Hide()
+	end
+	coolstats.RenderLogAnalysisChart(panel, selfPlayer, comparePlayer, selfBosses, compareBosses)
+	local rowIndex = 0
+	local currentRaidName = nil
+	for bossIndex, bossName in ipairs((coolstatsUwUData and coolstatsUwUData.bosses) or {}) do
+		local selfEntry = selfBosses[bossIndex]
+		local compareEntry = compareBosses[bossIndex]
+		local selfParse = GetUwUBossScoreCenti(selfEntry)
+		local compareParse = GetUwUBossScoreCenti(compareEntry)
+		local raidName = GetUwUBossRaidName(bossName)
+		if raidName ~= currentRaidName and rowIndex < #panel.rows then
+			rowIndex = rowIndex + 1
+			local raidRow = panel.rows[rowIndex]
+			raidRow.analysisType = "raid"
+			raidRow.raidHeader.text:SetText(raidName)
+			raidRow.raidHeader:Show()
+			for valueIndex = 1, #raidRow.values do
+				raidRow.values[valueIndex]:SetText("")
+			end
+			raidRow:Show()
+			currentRaidName = raidName
+			if rowIndex < #panel.rows then
+				rowIndex = rowIndex + 1
+				local columnRow = panel.rows[rowIndex]
+				columnRow.analysisType = "columns"
+				columnRow.raidHeader:Hide()
+				columnRow.bg:SetVertexColor(0.08, 0.08, 0.08, 0.42)
+				for valueIndex, column in ipairs(panel.analysisColumns) do
+					columnRow.values[valueIndex]:SetText(column[1])
+					columnRow.values[valueIndex]:SetTextColor(0.86, 0.86, 0.78)
+				end
+				columnRow:Show()
+			end
+		end
+		if rowIndex < #panel.rows then
+			rowIndex = rowIndex + 1
+			local row = panel.rows[rowIndex]
+			row.analysisType = "boss"
+			row.raidHeader:Hide()
+			if (rowIndex % 2) == 0 then
+				row.bg:SetVertexColor(0.28, 0.27, 0.25, 0.24)
+			else
+				row.bg:SetVertexColor(0.05, 0.06, 0.07, 0.12)
+			end
+			local selfDps = tonumber(GetUwUBossDps(selfEntry)) or 0
+			local compareDps = tonumber(GetUwUBossDps(compareEntry)) or 0
+			local parseDiff = selfParse and compareParse and ((selfParse - compareParse) / 100) or nil
+			local dpsDiff = selfDps > 0 and compareDps > 0 and (selfDps - compareDps) or nil
+			local dpsPercent = dpsDiff and (dpsDiff / compareDps) * 100 or nil
+			row.values[1]:SetText(GetUwUBossDisplayLabel(bossName))
+			row.values[1]:SetTextColor(0.86, 0.86, 0.78)
+			row.values[2]:SetText(selfParse and FormatUwUScore(selfParse) or "-")
+			row.values[3]:SetText(compareParse and FormatUwUScore(compareParse) or "-")
+			row.values[4]:SetText(parseDiff and coolstats.FormatLogAnalysisDifference(parseDiff) or "-")
+			row.values[5]:SetText(selfDps > 0 and FormatUwUDps(selfDps) or "-")
+			row.values[6]:SetText(compareDps > 0 and FormatUwUDps(compareDps) or "-")
+			row.values[7]:SetText(dpsPercent and coolstats.FormatLogAnalysisDifference(dpsPercent, "%") or "-")
+			local selfR, selfG, selfB = 0.45, 0.45, 0.45
+			local compareR, compareG, compareB = 0.45, 0.45, 0.45
+			if selfParse then
+				selfR, selfG, selfB = GetUwUScoreColor(selfParse)
+			end
+			if compareParse then
+				compareR, compareG, compareB = GetUwUScoreColor(compareParse)
+			end
+			row.values[2]:SetTextColor(selfR, selfG, selfB)
+			row.values[5]:SetTextColor(selfR, selfG, selfB)
+			row.values[3]:SetTextColor(compareR, compareG, compareB)
+			row.values[6]:SetTextColor(compareR, compareG, compareB)
+			local parseR, parseG, parseB = coolstats.GetLogAnalysisDifferenceColor(parseDiff)
+			local dpsR, dpsG, dpsB = coolstats.GetLogAnalysisDifferenceColor(dpsPercent)
+			row.values[4]:SetTextColor(parseR, parseG, parseB)
+			row.values[7]:SetTextColor(dpsR, dpsG, dpsB)
+			row:Show()
+		end
+		if selfParse and compareParse then
+			compared = compared + 1
+			local selfDps = tonumber(GetUwUBossDps(selfEntry)) or 0
+			local compareDps = tonumber(GetUwUBossDps(compareEntry)) or 0
+			local parseDiff = (selfParse - compareParse) / 100
+			local dpsPercent = selfDps > 0 and compareDps > 0 and ((selfDps - compareDps) / compareDps) * 100 or 0
+			parseDifferenceTotal = parseDifferenceTotal + parseDiff
+			dpsDifferenceTotal = dpsDifferenceTotal + dpsPercent
+		end
+	end
+
+	if compared > 0 then
+		panel.summary:SetText(string.format("%d shared bosses   Your average parse advantage %s   Your average DPS advantage %s", compared, coolstats.FormatLogAnalysisDifference(parseDifferenceTotal / compared), coolstats.FormatLogAnalysisDifference(dpsDifferenceTotal / compared, "%")))
+	else
+		panel.summary:SetText("No shared boss parses are available for these two players.")
+	end
+end
+
+function coolstats.OpenLogAnalysisWithName(name)
+	local allowed, reason, selfPlayer, comparePlayer = coolstats.CanOpenLogAnalysisWithName(name)
+	if not allowed then
+		if DEFAULT_CHAT_FRAME then
+			DEFAULT_CHAT_FRAME:AddMessage("|cff00c0ffcoolstats:|r " .. tostring(reason or "Log Analysis is unavailable."))
+		end
+		return false
+	end
+
+	local panel = coolstats.CreateLogAnalysisPanel()
+	panel.selfPlayer = selfPlayer
+	panel.comparePlayer = comparePlayer
+	panel.compareName = name
+	panel.selfSpecIndex = selfPlayer[4]
+	panel.compareSpecIndex = comparePlayer[4]
+	coolstats.RenderLogAnalysisPanel(panel)
+	panel:Show()
+	coolstats.TouchManagedWindow(panel)
+	return true
+end
+
 local function HookInspectUwUPanel()
 	if not InspectFrame or InspectFrame.__coolstatsUwUInspectHooked then
 		return
@@ -3580,11 +4552,12 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.GetCachedTalentsGroup(snapshot, groupIndex)
-		if not snapshot or type(snapshot.groups) ~= "table" then
+		local groups = coolstats.GetCachedTalentGroups(snapshot)
+		if type(groups) ~= "table" then
 			return nil
 		end
 		groupIndex = tonumber(groupIndex) or 1
-		return snapshot.groups[groupIndex] or snapshot.groups[1]
+		return groups[groupIndex] or groups[1]
 	end
 
 	function coolstats.CachedTalentButton_OnEnter(self)
@@ -3736,26 +4709,44 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.GetCachedTalentButtonPosition(talent)
-		local column = math.max(1, math.min(4, tonumber(talent and talent.column) or 1))
-		local tier = math.max(1, tonumber(talent and talent.tier) or 1)
+		local column = math.max(1, math.min(4, tonumber(coolstats.GetCachedTalentValue(talent, "column", 4)) or 1))
+		local tier = math.max(1, tonumber(coolstats.GetCachedTalentValue(talent, "tier", 3)) or 1)
 		return 22 + ((column - 1) * 58), -48 - ((tier - 1) * 45)
+	end
+
+	function coolstats.SyncCachedTalentPanelFrameLevels(panel)
+		if not panel then
+			return
+		end
+		local baseLevel = panel:GetFrameLevel()
+		for _, tree in ipairs(panel.trees or {}) do
+			tree:SetFrameLevel(baseLevel + 1)
+		end
+		for _, button in ipairs(panel.talentButtons or {}) do
+			button:SetFrameLevel(baseLevel + 6)
+		end
+		for _, button in ipairs(panel.groupButtons or {}) do
+			button:SetFrameLevel(baseLevel + 7)
+		end
 	end
 
 	function coolstats.FindCachedTalentPrerequisite(talent, talentByPosition)
 		if not talent or not talentByPosition then
 			return nil
 		end
-		if talent.prereqTier and talent.prereqColumn then
-			return talentByPosition[tostring(talent.prereqTier) .. ":" .. tostring(talent.prereqColumn)], talent.prereqTier, talent.prereqColumn
+		local prereqTier = coolstats.GetCachedTalentValue(talent, "prereqTier", 8)
+		local prereqColumn = coolstats.GetCachedTalentValue(talent, "prereqColumn", 9)
+		if prereqTier and prereqColumn then
+			return talentByPosition[tostring(prereqTier) .. ":" .. tostring(prereqColumn)], prereqTier, prereqColumn
 		end
-		if (tonumber(talent.rank) or 0) <= 0 then
+		if (tonumber(coolstats.GetCachedTalentValue(talent, "rank", 5)) or 0) <= 0 then
 			return nil
 		end
-		local tier = tonumber(talent.tier) or 1
-		local column = tonumber(talent.column) or 1
+		local tier = tonumber(coolstats.GetCachedTalentValue(talent, "tier", 3)) or 1
+		local column = tonumber(coolstats.GetCachedTalentValue(talent, "column", 4)) or 1
 		for candidateTier = tier - 1, 1, -1 do
 			local candidate = talentByPosition[tostring(candidateTier) .. ":" .. tostring(column)]
-			if candidate and (tonumber(candidate.rank) or 0) > 0 then
+			if candidate and (tonumber(coolstats.GetCachedTalentValue(candidate, "rank", 5)) or 0) > 0 then
 				return candidate, candidateTier, column
 			end
 		end
@@ -3834,6 +4825,7 @@ if type(coolstats) == "table" then
 		end
 		button = CreateFrame("Button", nil, panel)
 		SetFrameSize(button, 42, 42)
+		button:SetFrameLevel(panel:GetFrameLevel() + 6)
 		button.cachedTalentPanel = panel
 		button:RegisterForClicks("LeftButtonUp")
 		button:SetNormalTexture("Interface\\Icons\\INV_Misc_QuestionMark")
@@ -3932,9 +4924,11 @@ if type(coolstats) == "table" then
 		panel:SetScript("OnMouseDown", function(self)
 			self:SetFrameStrata("DIALOG")
 			self:SetFrameLevel(110)
+			coolstats.SyncCachedTalentPanelFrameLevels(self)
 		end)
 		panel:SetScript("OnShow", function(self)
 			self.wasShownOnce = true
+			coolstats.SyncCachedTalentPanelFrameLevels(self)
 		end)
 		panel:SetScript("OnHide", function(self)
 			if self.wasShownOnce and PlaySound then
@@ -4049,6 +5043,7 @@ if type(coolstats) == "table" then
 		for index = 1, 3 do
 			local tree = CreateFrame("Frame", nil, panel)
 			SetFrameSize(tree, 250, 548)
+			tree:SetFrameLevel(panel:GetFrameLevel() + 1)
 			tree:SetPoint("TOPLEFT", panel, "TOPLEFT", 30 + ((index - 1) * 280), -78)
 			tree:SetBackdrop({
 				bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -4069,6 +5064,7 @@ if type(coolstats) == "table" then
 		end
 
 		panel.talentButtons = {}
+		coolstats.SyncCachedTalentPanelFrameLevels(panel)
 		panel:Hide()
 		return panel
 	end
@@ -4078,15 +5074,19 @@ if type(coolstats) == "table" then
 			return
 		end
 		panel.snapshot = snapshot
+		coolstats.SyncCachedTalentPanelFrameLevels(panel)
+		panel.displayTalentGroups = coolstats.GetCachedTalentGroups(snapshot)
 		local selectedGroupIndex = panel.selectedGroupIndex or 1
-		local group = coolstats.GetCachedTalentsGroup(snapshot, selectedGroupIndex)
+		local group = panel.displayTalentGroups and (panel.displayTalentGroups[selectedGroupIndex] or panel.displayTalentGroups[1])
 		if not group then
 			selectedGroupIndex = 1
-			group = coolstats.GetCachedTalentsGroup(snapshot, selectedGroupIndex)
+			group = panel.displayTalentGroups and panel.displayTalentGroups[1]
 		end
 		panel.selectedGroupIndex = selectedGroupIndex
 		panel.title:SetText(snapshot.name or "Unknown")
-		if snapshot.missing then
+		if snapshot.referenceOnly then
+			panel.subtitle:SetText("Class talent reference - allocation not cached")
+		elseif snapshot.missing then
 			panel.subtitle:SetText("No cached talents")
 		else
 			panel.subtitle:SetText(FormatCachedGearDateTime(snapshot.seenAt))
@@ -4094,7 +5094,7 @@ if type(coolstats) == "table" then
 
 		for index = 1, 2 do
 			local button = panel.groupButtons[index]
-			local candidate = snapshot.groups and snapshot.groups[index]
+			local candidate = panel.displayTalentGroups and panel.displayTalentGroups[index]
 			if candidate then
 				local icon, groupName, _, totalPoints = coolstats.GetCachedTalentGroupSummary(candidate)
 				button.groupIndex = index
@@ -4150,14 +5150,14 @@ if type(coolstats) == "table" then
 				local talents = tab.talents or {}
 				for talentIndex = 1, #talents do
 					local talent = talents[talentIndex]
-					local rankValue = tonumber(talent.rank) or 0
-					local maxRankValue = tonumber(talent.maxRank) or 0
+					local rankValue = tonumber(coolstats.GetCachedTalentValue(talent, "rank", 5)) or 0
+					local maxRankValue = tonumber(coolstats.GetCachedTalentValue(talent, "maxRank", 6)) or 0
 					local button = coolstats.AcquireCachedTalentButton(panel, buttonIndex)
 					buttonIndex = buttonIndex + 1
 					button:ClearAllPoints()
 					local x, y = coolstats.GetCachedTalentButtonPosition(talent)
 					button:SetPoint("TOPLEFT", tree, "TOPLEFT", x, y)
-					button:SetNormalTexture(talent.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+					button:SetNormalTexture(coolstats.GetCachedTalentValue(talent, "icon", 2) or "Interface\\Icons\\INV_Misc_QuestionMark")
 					local normal = button:GetNormalTexture()
 					if normal then
 						normal:ClearAllPoints()
@@ -4187,19 +5187,17 @@ if type(coolstats) == "table" then
 					end
 					if button.border then
 						if rankValue > 0 then
-							button.border:SetVertexColor(talent.exceptional and 0.55 or 0.95, talent.exceptional and 0.86 or 0.82, talent.exceptional and 1.0 or 0.36, 0.95)
+							local exceptional = coolstats.GetCachedTalentValue(talent, "exceptional", 7)
+							button.border:SetVertexColor(exceptional and 0.55 or 0.95, exceptional and 0.86 or 0.82, exceptional and 1.0 or 0.36, 0.95)
 						else
 							button.border:SetVertexColor(0.35, 0.35, 0.35, 0.62)
 						end
 					end
-					button.talentName = talent.name
+					button.talentName = coolstats.GetCachedTalentValue(talent, "name", 1)
 					button.tabName = tab.name
-					button.rank = talent.rank
-					button.maxRank = talent.maxRank
-					button.talentLink = talent.link
-					button.tabIndex = talent.tabIndex
-					button.talentIndex = talent.talentIndex
-					button.groupIndex = talent.groupIndex
+					button.rank = rankValue
+					button.maxRank = maxRankValue
+					button.talentLink = coolstats.GetCachedTalentValue(talent, "link", 10)
 					button.playerName = snapshot.name
 					button:Show()
 				end
@@ -4211,12 +5209,42 @@ if type(coolstats) == "table" then
 		end
 	end
 
+	function coolstats.BuildUncachedTalentReferenceSnapshot(name)
+		local player = GetUwUPlayerByName and GetUwUPlayerByName(name)
+		local gear = GetCachedGearSnapshot(name)
+		local classIndex = player and player[3] or gear and gear.classIndex
+		local classFile = gear and gear.classFile or UWU_CLASS_FILE_BY_INDEX[classIndex]
+		local catalog = coolstats.GetCachedTalentCatalog(classFile)
+		if not classFile or not catalog or type(catalog.tabs) ~= "table" then
+			return nil
+		end
+		local talentCount = 0
+		for _, tab in ipairs(catalog.tabs) do
+			talentCount = talentCount + #(tab.talents or {})
+		end
+		if talentCount <= 0 then
+			return nil
+		end
+		return {
+			name = player and player[1] or gear and gear.name or name,
+			classFile = classFile,
+			classIndex = classIndex or UWU_CLASS_INDEX_BY_FILE[classFile],
+			activeGroup = 1,
+			talentVersion = 2,
+			rankGroups = { { 1, string.rep("0", talentCount) } },
+			referenceOnly = true,
+		}
+	end
+
 	function coolstats.OpenCachedTalentsForName(name)
 		if not name or name == "" then
 			return false
 		end
 		local cached, requested = coolstats.CacheTalentsForLookupName(name)
 		local snapshot = cached or coolstats.GetCachedTalentSnapshot(name)
+		if not snapshot then
+			snapshot = coolstats.BuildUncachedTalentReferenceSnapshot(name)
+		end
 		if not snapshot then
 			snapshot = {
 				name = name,
@@ -4229,6 +5257,8 @@ if type(coolstats) == "table" then
 			if requested then
 				coolstats.pendingCachedTalentsOpenName = name
 			end
+		elseif requested and snapshot.referenceOnly then
+			coolstats.pendingCachedTalentsOpenName = name
 		end
 		local panel = coolstats.CreateCachedTalentsPanel()
 		panel.selectedGroupIndex = snapshot.activeGroup or 1
@@ -4237,7 +5267,7 @@ if type(coolstats) == "table" then
 		if PlaySound then
 			PlaySound(snapshot.missing and "igCharacterInfoOpen" or "igCharacterInfoTab")
 		end
-		return not snapshot.missing
+		return not snapshot.missing and not snapshot.referenceOnly
 	end
 
 	function coolstats.GetCachedPlayerBrowserBestRank(player)
@@ -4778,68 +5808,89 @@ if type(coolstats) == "table" then
 		if not url or url == "" then
 			return
 		end
-		if StaticPopupDialogs and StaticPopup_Show then
-			if not StaticPopupDialogs["COOLSTATS_BROWSER_URL"] then
-				StaticPopupDialogs["COOLSTATS_BROWSER_URL"] = {
-					text = "%s",
-					button1 = OKAY or "OK",
-					hasEditBox = 1,
-					maxLetters = 255,
-					timeout = 0,
-					whileDead = 1,
-					hideOnEscape = 1,
-					OnShow = function(self)
-						local editBox = self.editBox or _G[self:GetName() .. "EditBox"]
-						self.coolstatsBrowserUrlOriginalWidth = self:GetWidth()
-						self:SetWidth(760)
-						if editBox then
-							editBox.coolstatsBrowserUrlOriginalWidth = editBox:GetWidth()
-							editBox.coolstatsBrowserUrlOriginalPoints = {}
-							for pointIndex = 1, editBox:GetNumPoints() do
-								editBox.coolstatsBrowserUrlOriginalPoints[pointIndex] = { editBox:GetPoint(pointIndex) }
-							end
-							editBox:ClearAllPoints()
-							editBox:SetPoint("TOP", self, "TOP", 0, -48)
-							editBox:SetWidth(680)
-							editBox:SetText(coolstats.cachedPlayerBrowserUrl or "")
-							editBox:SetFocus()
-							editBox:HighlightText()
-						end
-					end,
-					OnHide = function(self)
-						local editBox = self.editBox or _G[self:GetName() .. "EditBox"]
-						if editBox then
-							editBox:ClearFocus()
-							if editBox.coolstatsBrowserUrlOriginalWidth then
-								editBox:SetWidth(editBox.coolstatsBrowserUrlOriginalWidth)
-							end
-							if editBox.coolstatsBrowserUrlOriginalPoints then
-								editBox:ClearAllPoints()
-								for pointIndex = 1, #editBox.coolstatsBrowserUrlOriginalPoints do
-									editBox:SetPoint(unpack(editBox.coolstatsBrowserUrlOriginalPoints[pointIndex], 1, 5))
-								end
-							end
-							editBox.coolstatsBrowserUrlOriginalWidth = nil
-							editBox.coolstatsBrowserUrlOriginalPoints = nil
-						end
-						if self.coolstatsBrowserUrlOriginalWidth then
-							self:SetWidth(self.coolstatsBrowserUrlOriginalWidth)
-							self.coolstatsBrowserUrlOriginalWidth = nil
-						end
-					end,
-					EditBoxOnEnterPressed = function(self)
-						self:GetParent():Hide()
-					end,
-					EditBoxOnEscapePressed = function(self)
-						self:GetParent():Hide()
-					end,
-				}
+		local panel = coolstats.CreateCachedPlayerBrowserUrlDialog()
+		if not panel then
+			if DEFAULT_CHAT_FRAME then
+				DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r " .. url)
 			end
-			coolstats.cachedPlayerBrowserUrl = url
-			StaticPopup_Show("COOLSTATS_BROWSER_URL", title or "External URL")
-		elseif DEFAULT_CHAT_FRAME then
-			DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats:|r " .. url)
+			return
 		end
+		panel.title:SetText(title or "External URL")
+		panel.editBox:SetText(url)
+		panel:Show()
+		panel.editBox:SetFocus()
+		panel.editBox:HighlightText()
+		coolstats.TouchManagedWindow(panel)
+	end
+
+	function coolstats.CreateCachedPlayerBrowserUrlDialog()
+		if coolstats.cachedPlayerBrowserUrlDialog then
+			return coolstats.cachedPlayerBrowserUrlDialog
+		end
+		local panel = CreateFrame("Frame", "coolstatsCachedPlayerBrowserUrlDialog", UIParent)
+		coolstats.cachedPlayerBrowserUrlDialog = panel
+		SetFrameSize(panel, 960, 146)
+		panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+		panel:SetFrameStrata("DIALOG")
+		panel:SetFrameLevel(120)
+		panel:SetMovable(true)
+		panel:EnableMouse(true)
+		panel:RegisterForDrag("LeftButton")
+		panel:SetScript("OnDragStart", function(self)
+			self:StartMoving()
+		end)
+		panel:SetScript("OnDragStop", function(self)
+			self:StopMovingOrSizing()
+		end)
+		panel:SetBackdrop({
+			bgFile = "Interface\\Buttons\\WHITE8X8",
+			edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+			tile = false,
+			edgeSize = 16,
+			insets = { left = 5, right = 5, top = 5, bottom = 5 },
+		})
+		panel:SetBackdropColor(0.02, 0.018, 0.014, 0.98)
+		panel:SetBackdropBorderColor(0.55, 0.52, 0.48, 1)
+		if coolstats.ApplyTabardPanelBackground then
+			coolstats.ApplyTabardPanelBackground(panel, 0.80, 0.58)
+		end
+
+		local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+		close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
+
+		local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		title:SetPoint("TOP", panel, "TOP", 0, -18)
+		title:SetTextColor(0.0, 0.75, 1.0)
+		panel.title = title
+
+		local editBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		SetFrameSize(editBox, 860, 22)
+		editBox:SetPoint("TOP", panel, "TOP", 0, -54)
+		editBox:SetAutoFocus(false)
+		editBox:SetMaxLetters(512)
+		editBox:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+			panel:Hide()
+		end)
+		editBox:SetScript("OnEnterPressed", function(self)
+			self:HighlightText()
+		end)
+		panel.editBox = editBox
+
+		local okay = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		SetFrameSize(okay, 120, 24)
+		okay:SetPoint("BOTTOM", panel, "BOTTOM", 0, 18)
+		okay:SetText(OKAY or "Okay")
+		okay:SetScript("OnClick", function()
+			panel:Hide()
+		end)
+
+		panel:SetScript("OnHide", function()
+			editBox:ClearFocus()
+		end)
+		coolstats.RegisterManagedWindow(panel)
+		panel:Hide()
+		return panel
 	end
 
 	function coolstats.GetCachedPlayerBrowserRealmName()
@@ -4903,17 +5954,6 @@ if type(coolstats) == "table" then
 		elseif InviteByName then
 			InviteByName(name)
 		end
-	end
-
-	function coolstats.TargetCachedPlayerBrowserPlayer(name)
-		name = string.gsub(tostring(name or ""), "%-.+$", "")
-		if name == "" or not TargetByName then
-			return
-		end
-		if CloseDropDownMenus then
-			CloseDropDownMenus()
-		end
-		TargetByName(name, true)
 	end
 
 	function coolstats.GetCachedPlayerBrowserHelpName()
@@ -5042,22 +6082,6 @@ if type(coolstats) == "table" then
 		UIDropDownMenu_AddButton(info, level)
 
 		info = UIDropDownMenu_CreateInfo()
-		info.text = "Target"
-		info.notCheckable = 1
-		info.func = function()
-			coolstats.TargetCachedPlayerBrowserPlayer(name)
-		end
-		UIDropDownMenu_AddButton(info, level)
-
-		info = UIDropDownMenu_CreateInfo()
-		info.text = "Warmane Armory"
-		info.notCheckable = 1
-		info.func = function()
-			coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
-		end
-		UIDropDownMenu_AddButton(info, level)
-
-		info = UIDropDownMenu_CreateInfo()
 		info.text = "Talents"
 		info.notCheckable = 1
 		info.func = function()
@@ -5073,11 +6097,32 @@ if type(coolstats) == "table" then
 		end
 		UIDropDownMenu_AddButton(info, level)
 
+		local analysisAllowed, analysisReason = coolstats.CanOpenLogAnalysisWithName(name)
+		info = UIDropDownMenu_CreateInfo()
+		info.text = "Log Analysis"
+		info.notCheckable = 1
+		info.disabled = not analysisAllowed
+		info.tooltipTitle = not analysisAllowed and "Log Analysis" or nil
+		info.tooltipText = not analysisAllowed and analysisReason or nil
+		info.tooltipOnButton = not analysisAllowed and 1 or nil
+		info.func = function()
+			coolstats.OpenLogAnalysisWithName(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
 		info = UIDropDownMenu_CreateInfo()
 		info.text = isFavorite and "Unfavourite" or "Favourite"
 		info.notCheckable = 1
 		info.func = function()
 			coolstats.ToggleCachedPlayerBrowserFavorite(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
+		info = UIDropDownMenu_CreateInfo()
+		info.text = "|cff00bfffWarmane Armory|r"
+		info.notCheckable = 1
+		info.func = function()
+			coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
 		end
 		UIDropDownMenu_AddButton(info, level)
 
@@ -5324,30 +6369,9 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.CreateCachedPlayerBrowserClassDropdown(panel)
-		if not UIDropDownMenu_Initialize then
-			local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-			SetFrameSize(button, 150, 22)
-			button:SetText("Class: All")
-			button:SetScript("OnClick", function()
-				if panel.browserClassFilter == nil then
-					coolstats.SetCachedPlayerBrowserClassFilter(panel, "favorites")
-				elseif panel.browserClassFilter == "favorites" then
-					coolstats.SetCachedPlayerBrowserClassFilter(panel, 0)
-				elseif panel.browserClassFilter >= 9 then
-					coolstats.SetCachedPlayerBrowserClassFilter(panel, nil)
-				else
-					coolstats.SetCachedPlayerBrowserClassFilter(panel, panel.browserClassFilter + 1)
-				end
-			end)
-			panel.classFilterButton = button
-			return button
-		end
-
 		local dropdown = CreateFrame("Frame", "coolstatsCachedPlayerBrowserClassDropdown", panel, "UIDropDownMenuTemplate")
 		dropdown.ownerPanel = panel
-		if UIDropDownMenu_SetWidth then
-			UIDropDownMenu_SetWidth(dropdown, 150)
-		end
+		UIDropDownMenu_SetWidth(dropdown, 150)
 		UIDropDownMenu_Initialize(dropdown, coolstats.InitializeCachedPlayerBrowserClassDropdown)
 		panel.classDropdown = dropdown
 		return dropdown
@@ -5394,38 +6418,9 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.CreateCachedPlayerBrowserSpecDropdown(panel)
-		if not UIDropDownMenu_Initialize then
-			local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-			SetFrameSize(button, 180, 22)
-			button:SetText("Spec: All")
-			button:SetScript("OnClick", function()
-				local choices = coolstats.GetCachedPlayerBrowserSpecFilterChoices(panel)
-				if panel.browserSpecFilterKey == nil and choices[1] then
-					coolstats.SetCachedPlayerBrowserSpecFilter(panel, choices[1].key)
-				else
-					local nextIndex = nil
-					for index = 1, #choices do
-						if choices[index].key == panel.browserSpecFilterKey then
-							nextIndex = index + 1
-							break
-						end
-					end
-					if nextIndex and choices[nextIndex] then
-						coolstats.SetCachedPlayerBrowserSpecFilter(panel, choices[nextIndex].key)
-					else
-						coolstats.SetCachedPlayerBrowserSpecFilter(panel, nil)
-					end
-				end
-			end)
-			panel.specFilterButton = button
-			return button
-		end
-
 		local dropdown = CreateFrame("Frame", "coolstatsCachedPlayerBrowserSpecDropdown", panel, "UIDropDownMenuTemplate")
 		dropdown.ownerPanel = panel
-		if UIDropDownMenu_SetWidth then
-			UIDropDownMenu_SetWidth(dropdown, 180)
-		end
+		UIDropDownMenu_SetWidth(dropdown, 180)
 		UIDropDownMenu_Initialize(dropdown, coolstats.InitializeCachedPlayerBrowserSpecDropdown)
 		panel.specDropdown = dropdown
 		return dropdown
@@ -5721,7 +6716,6 @@ if type(coolstats) == "table" then
 			end
 		end
 		coolstats.RegisterManagedWindow(panel)
-
 		local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		title:SetPoint("TOP", panel, "TOP", 0, -14)
 		title:SetText("coolstats")
@@ -6033,35 +7027,46 @@ local function AddTooltipLines()
 	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
 		return
 	end
-	CacheInspectGearForUnit(unit)
+	local options = coolstats.GetTooltipFeatureOptions()
+	if options.cacheOnHover ~= false then
+		CacheInspectGearForUnit(unit)
+	end
 
-	ApplyGuildRankLine(unit)
-	AddClassLine(unit)
-	GameTooltip:AddLine(" ")
+	if options.guildRank ~= false then
+		ApplyGuildRankLine(unit)
+	end
+	if options.classLine ~= false then
+		AddClassLine(unit)
+	end
 
-	local targetUnit = unit .. "target"
-	local targetText = nil
-	local targetR, targetG, targetB = 0.6, 0.6, 0.6
+	if options.target ~= false then
+		GameTooltip:AddLine(" ")
+		local targetUnit = unit .. "target"
+		local targetText = nil
+		local targetR, targetG, targetB = 0.6, 0.6, 0.6
 
-	if UnitExists(targetUnit) then
-		targetText = GetTargetText(targetUnit)
-		if UnitIsPlayer(targetUnit) then
-			targetR, targetG, targetB = GetClassColor(targetUnit)
+		if UnitExists(targetUnit) then
+			targetText = GetTargetText(targetUnit)
+			if UnitIsPlayer(targetUnit) then
+				targetR, targetG, targetB = GetClassColor(targetUnit)
+			else
+				targetR, targetG, targetB = GetReactionColor(targetUnit)
+			end
+		end
+
+		if targetText then
+			GameTooltip:AddDoubleLine("Target", targetText, ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, targetR, targetG, targetB)
 		else
-			targetR, targetG, targetB = GetReactionColor(targetUnit)
+			GameTooltip:AddDoubleLine("Target", "None", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, targetR, targetG, targetB)
 		end
 	end
 
-	if targetText then
-		GameTooltip:AddDoubleLine("Target", targetText, ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, targetR, targetG, targetB)
-	else
-		GameTooltip:AddDoubleLine("Target", "None", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, targetR, targetG, targetB)
-	end
-
-	local ok = pcall(AddRaidProgressLines, unit)
-	if not ok then
-		GameTooltip:AddLine(" ")
-		GameTooltip:AddDoubleLine("Raid Progress", "Unavailable", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+	if options.raidProgressFallback ~= false then
+		local ok = pcall(AddRaidProgressLines, unit)
+		if not ok then
+			GameTooltip:AddLine(" ")
+			GameTooltip:AddDoubleLine("Raid Progress", "Unavailable", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+		end
 	end
 	AddUwULogsLines(unit)
 	lastTooltipAltState = IsAltKeyDown and IsAltKeyDown() or false
