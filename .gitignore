@@ -11,6 +11,9 @@ data/logs/*
 *.rar
 __pycache__/
 *.pyc
+release_logs/
+tools/update_uwu_logs.py
+tools/update_all_uwu_realms.ps1
 
 # Local screenshots/videos used while developing the addon.
 *.png
