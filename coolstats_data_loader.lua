@@ -52,6 +52,15 @@ local function SetRealmDataStatus(loaded, reason, addonName)
 	}
 end
 
+coolstats.realmDataByRealm = coolstats.realmDataByRealm or {}
+
+local function RememberRealmData(data)
+	local realmKey = GetDataRealmKey(data)
+	if realmKey ~= "" and data and type(data.players) == "table" then
+		coolstats.realmDataByRealm[realmKey] = data
+	end
+end
+
 function coolstats.GetCurrentRealmName()
 	return GetCurrentRealmName()
 end
@@ -65,7 +74,15 @@ function coolstats.GetRealmDataAddonName(realm)
 end
 
 function coolstats.GetExpectedRealmPhaseId(realm)
-	return REALM_PHASE_IDS[NormalizeRealmName(realm or GetCurrentRealmName())]
+	local realmKey = NormalizeRealmName(realm or GetCurrentRealmName())
+	local addonName = REALM_DATA_ADDONS[realmKey]
+	if addonName and GetAddOnMetadata then
+		local manifestPhase = NormalizeRealmName(GetAddOnMetadata(addonName, "X-coolstats-Phase"))
+		if manifestPhase ~= "" then
+			return manifestPhase
+		end
+	end
+	return REALM_PHASE_IDS[realmKey]
 end
 
 function coolstats.GetRealmDataStatus()
@@ -79,16 +96,24 @@ function coolstats.EnsureRealmDataLoaded()
 	-- The core addon never owns logs data. Discard anything another addon
 	-- exposed unless it explicitly belongs to the current realm.
 	if DataMatchesCurrentRealm(coolstatsUwUData, realmKey) then
+		RememberRealmData(coolstatsUwUData)
 		SetRealmDataStatus(true, "loaded", addonName)
 		return true
 	end
 
-	-- Never expose a bundled dataset from a different realm.
+	RememberRealmData(coolstatsUwUData)
 	coolstatsUwUData = nil
 
 	if not addonName then
 		SetRealmDataStatus(false, "unsupported-realm", nil)
 		return false, "unsupported-realm"
+	end
+
+	local rememberedData = coolstats.realmDataByRealm[realmKey]
+	if DataMatchesCurrentRealm(rememberedData, realmKey) then
+		coolstatsUwUData = rememberedData
+		SetRealmDataStatus(true, "restored", addonName)
+		return true
 	end
 
 	if IsAddOnLoaded and IsAddOnLoaded(addonName) then
@@ -103,6 +128,7 @@ function coolstats.EnsureRealmDataLoaded()
 
 	local loaded, reason = LoadAddOn(addonName)
 	if loaded and DataMatchesCurrentRealm(coolstatsUwUData, realmKey) then
+		RememberRealmData(coolstatsUwUData)
 		SetRealmDataStatus(true, "loaded", addonName)
 		return true
 	end
@@ -124,7 +150,5 @@ loader:SetScript("OnEvent", function(_, event, loadedAddonName)
 		return
 	end
 
-	if not coolstats.realmDataStatus or not coolstats.realmDataStatus.loaded then
-		coolstats.EnsureRealmDataLoaded()
-	end
+	coolstats.EnsureRealmDataLoaded()
 end)

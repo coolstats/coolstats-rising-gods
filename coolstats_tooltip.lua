@@ -8,17 +8,25 @@ local ADDON_COLOR_B = 0.0
 local CURRENT_UWU_PHASE_ID = "ulduar"
 local CURRENT_RAID_ID = CURRENT_UWU_PHASE_ID
 local SECONDS_PER_DAY = 86400
-local RAID_PROGRESS_CACHE_SECONDS = 60
+local RAID_PROGRESS_CACHE_SECONDS = 300
 local RAID_PROGRESS_FAILED_CACHE_SECONDS = 1.5
 local RAID_PROGRESS_LOW_LEVEL_CACHE_SECONDS = SECONDS_PER_DAY
 local RAID_PROGRESS_PRUNE_INTERVAL_SECONDS = 60
 local RAID_PROGRESS_REQUEST_TIMEOUT_SECONDS = 4
+coolstats.RAID_PROGRESS_REQUEST_THROTTLE = {
+	dwell = 0.10,
+	interval = 1.0,
+	window = 11,
+	limit = 5,
+}
 
 local RAID_PROGRESS_DATA = {
 	ulduar = {
 		name = "Ulduar",
 		hardLabel = "Ulduar 25H",
 		hardTotal = 9,
+		milestoneLabel = "A",
+		milestoneAchievementIds = { 3037 },
 		hardModes = {
 			{ name = "FL 4T", ids = { 3057 } },
 			{ name = "XT", ids = { 3059 } },
@@ -31,6 +39,25 @@ local RAID_PROGRESS_DATA = {
 			{ name = "Yogg 0", ids = { 3164 } },
 		},
 	},
+	icc = {
+		name = "Icecrown Citadel",
+		hardLabel = "ICC 25H",
+		hardTotal = 10,
+		milestoneLabel = "LOD",
+		milestoneAchievementIds = { 4584 },
+		hardModes = {
+			{ name = "Marrowgar", statisticIds = { 4642 } },
+			{ name = "Deathwhisper", statisticIds = { 4656 } },
+			{ name = "Saurfang", statisticIds = { 4664 } },
+			{ name = "Festergut", statisticIds = { 4667 } },
+			{ name = "Rotface", statisticIds = { 4670 } },
+			{ name = "Putricide", statisticIds = { 4673 } },
+			{ name = "Blood Council", statisticIds = { 4676 } },
+			{ name = "Lana'thel", statisticIds = { 4679 } },
+			{ name = "Sindragosa", statisticIds = { 4685 } },
+			{ name = "Lich King", statisticIds = { 4688 } },
+		},
+	},
 }
 
 local UWU_RAID_PHASES = {
@@ -39,7 +66,7 @@ local UWU_RAID_PHASES = {
 		defaultCollapsedRaids = {},
 	},
 	toc = {
-		name = "Trial of the Crusader",
+		name = "Trial of the Grand Crusader",
 		defaultCollapsedRaids = {},
 	},
 	icc = {
@@ -55,7 +82,7 @@ local UWU_RAID_PHASES = {
 local UWU_INSPECT_PANEL_WIDTH = 318
 local UWU_INSPECT_PANEL_HEIGHT = 460
 local UWU_INSPECT_ROW_HEIGHT = 15
-local UWU_INSPECT_ROW_COUNT = 27
+local UWU_INSPECT_ROW_COUNT = 40
 local UWU_INSPECT_ROW_WIDTH = 292
 local UWU_INSPECT_ROW_LEFT = 13
 local UWU_INSPECT_TEXT_LEFT = 4
@@ -211,11 +238,13 @@ local UWU_BOSS_RAID_OVERRIDES = {
 	["Emalon the Storm Watcher"] = "Vault of Archavon",
 	["Koralon the Flame Watcher"] = "Vault of Archavon",
 	["Toravon the Ice Watcher"] = "Vault of Archavon",
-	["Northrend Beasts"] = "Trial of the Crusader",
-	["Lord Jaraxxus"] = "Trial of the Crusader",
-	["Faction Champions"] = "Trial of the Crusader",
-	["Twin Val'kyr"] = "Trial of the Crusader",
+	["Northrend Beasts"] = "Trial of the Grand Crusader",
+	["Lord Jaraxxus"] = "Trial of the Grand Crusader",
+	["Faction Champions"] = "Trial of the Grand Crusader",
+	["Twin Val'kyr"] = "Trial of the Grand Crusader",
 	["Anub'arak"] = "Trial of the Grand Crusader",
+	["Onyxia"] = "Onyxia's Lair",
+	["Onyxia the Broodmother"] = "Onyxia's Lair",
 	["Lord Marrowgar"] = "Icecrown Citadel",
 	["Lady Deathwhisper"] = "Icecrown Citadel",
 	["Gunship Battle"] = "Icecrown Citadel",
@@ -239,6 +268,11 @@ local UWU_BOSS_SHORT_NAMES = {
 	["General Vezax"] = "Vezax",
 	["Algalon the Observer"] = "Algalon",
 	["Emalon the Storm Watcher"] = "Emalon",
+	["Koralon the Flame Watcher"] = "Koralon",
+	["Northrend Beasts"] = "Beasts",
+	["Faction Champions"] = "Champions",
+	["Twin Val'kyr"] = "Twin Val'kyr",
+	["Onyxia the Broodmother"] = "Onyxia",
 	["Lord Marrowgar"] = "Marrowgar",
 	["Lady Deathwhisper"] = "Deathwhisper",
 	["Deathbringer Saurfang"] = "Saurfang",
@@ -262,21 +296,114 @@ local UWU_HARD_MODE_BOSSES = {
 	["Mimiron"] = true,
 	["General Vezax"] = true,
 	["Yogg-Saron"] = true,
+	["Northrend Beasts"] = true,
+	["Lord Jaraxxus"] = true,
+	["Faction Champions"] = true,
+	["Twin Val'kyr"] = true,
+	["Anub'arak"] = true,
 }
 
-local UWU_PROGRESS_HARD_BOSSES = {
-	"XT-002 Deconstructor",
-	"Assembly of Iron",
-	"Hodir",
-	"Thorim",
-	"Freya",
-	"Mimiron",
-	"General Vezax",
-	"Yogg-Saron",
+local UWU_LOG_PROGRESS_PHASES = {
+	ulduar = {
+		hardLabel = "Ulduar 25H Logs",
+		milestoneLabel = "A",
+		milestoneBoss = "Algalon the Observer",
+		hardBosses = {
+			"XT-002 Deconstructor",
+			"Assembly of Iron",
+			"Hodir",
+			"Thorim",
+			"Freya",
+			"Mimiron",
+			"General Vezax",
+			"Yogg-Saron",
+		},
+	},
+	toc = {
+		hardLabel = "TOGC 25H Logs",
+		milestoneLabel = "AA",
+		milestoneBoss = "Anub'arak",
+		hardBosses = {
+			"Northrend Beasts",
+			"Lord Jaraxxus",
+			"Faction Champions",
+			"Twin Val'kyr",
+			"Anub'arak",
+		},
+	},
+	icc = {
+		hardLabel = "ICC 25H Logs",
+		milestoneLabel = "LOD",
+		milestoneBoss = "The Lich King",
+		hardBosses = {
+			"Lord Marrowgar",
+			"Lady Deathwhisper",
+			"Deathbringer Saurfang",
+			"Festergut",
+			"Rotface",
+			"Professor Putricide",
+			"Blood Prince Council",
+			"Blood-Queen Lana'thel",
+			"Sindragosa",
+			"The Lich King",
+		},
+	},
+}
+
+coolstats.UWU_BOSS_CHART_ABBREVIATIONS = {
+	["Ignis the Furnace Master"] = "IG",
+	["Razorscale"] = "RZ",
+	["XT-002 Deconstructor"] = "XT",
+	["Assembly of Iron"] = "IC",
+	["Kologarn"] = "KO",
+	["Auriaya"] = "AU",
+	["Hodir"] = "HD",
+	["Thorim"] = "TH",
+	["Freya"] = "FR",
+	["Mimiron"] = "MI",
+	["General Vezax"] = "VX",
+	["Yogg-Saron"] = "YS",
+	["Algalon the Observer"] = "AL",
+	["Northrend Beasts"] = "NB",
+	["Lord Jaraxxus"] = "LJ",
+	["Faction Champions"] = "FC",
+	["Twin Val'kyr"] = "TV",
+	["Anub'arak"] = "AA",
+	["Lord Marrowgar"] = "LM",
+	["Lady Deathwhisper"] = "LD",
+	["Deathbringer Saurfang"] = "DS",
+	["Festergut"] = "FG",
+	["Rotface"] = "RF",
+	["Professor Putricide"] = "PP",
+	["Blood Prince Council"] = "BC",
+	["Blood-Queen Lana'thel"] = "BQ",
+	["Sindragosa"] = "SD",
+	["The Lich King"] = "LK",
+}
+
+coolstats.UWU_ULDUAR_RAID_BOSSES = {
+	["Ignis the Furnace Master"] = true,
+	["Razorscale"] = true,
+	["XT-002 Deconstructor"] = true,
+	["Assembly of Iron"] = true,
+	["Kologarn"] = true,
+	["Auriaya"] = true,
+	["Hodir"] = true,
+	["Thorim"] = true,
+	["Freya"] = true,
+	["Mimiron"] = true,
+	["General Vezax"] = true,
+	["Yogg-Saron"] = true,
+	["Algalon the Observer"] = true,
 }
 
 local raidProgressCache = {}
 local pendingRaidProgress = nil
+coolstats.raidProgressRequestState = {
+	queued = nil,
+	times = {},
+	last = -100,
+}
 local tooltipAchievementComparisonOwned = false
 local lastRaidProgressPruneAt = 0
 local tooltipFrame = CreateFrame("Frame")
@@ -455,7 +582,7 @@ function coolstats.TouchManagedWindowOwner(frame)
 end
 
 local function GetCurrentUwUPhase()
-	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_UWU_PHASE_ID
+	local phaseId = (coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()) or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_UWU_PHASE_ID
 	return UWU_RAID_PHASES[phaseId] or UWU_RAID_PHASES.ulduar
 end
 
@@ -1911,9 +2038,10 @@ function coolstats.YieldTooltipAchievementComparisonToUI()
 		local interruptedKey = pendingRaidProgress.key
 		pendingRaidProgress = nil
 		if CacheRaidProgressFailure then
-			CacheRaidProgressFailure(interruptedKey, true)
+			CacheRaidProgressFailure(interruptedKey, true, "Achievement UI busy")
 		end
 	end
+	coolstats.raidProgressRequestState.queued = nil
 	tooltipAchievementComparisonOwned = false
 	tooltipFrame:SetScript("OnUpdate", nil)
 end
@@ -1935,7 +2063,15 @@ local function ClearRaidProgressCacheForUnit(unit)
 	if pendingRaidProgress and pendingRaidProgress.key == key then
 		pendingRaidProgress = nil
 		coolstats.ClearTooltipAchievementComparison()
-		tooltipFrame:SetScript("OnUpdate", nil)
+		if not coolstats.raidProgressRequestState.queued then
+			tooltipFrame:SetScript("OnUpdate", nil)
+		end
+	end
+	if coolstats.raidProgressRequestState.queued and coolstats.raidProgressRequestState.queued.key == key then
+		coolstats.raidProgressRequestState.queued = nil
+		if not pendingRaidProgress then
+			tooltipFrame:SetScript("OnUpdate", nil)
+		end
 	end
 end
 
@@ -1955,8 +2091,17 @@ local function PruneRaidProgressCache(force)
 	end
 end
 
+function coolstats.GetActiveUwUPhaseId()
+	local currentRealmKey = coolstats.GetCurrentRealmKey and coolstats.GetCurrentRealmKey()
+	local dataRealmKey = string.lower(string.gsub(tostring(coolstatsUwUData and coolstatsUwUData.realm or ""), "[^%a%d]", ""))
+	if coolstatsUwUData and coolstatsUwUData.phaseId and (not currentRealmKey or currentRealmKey == "" or dataRealmKey == currentRealmKey) then
+		return coolstatsUwUData.phaseId
+	end
+	return (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_UWU_PHASE_ID
+end
+
 local function GetCurrentRaid()
-	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId()) or CURRENT_RAID_ID
+	local phaseId = coolstats.GetActiveUwUPhaseId() or CURRENT_RAID_ID
 	return RAID_PROGRESS_DATA[phaseId]
 end
 
@@ -1975,14 +2120,32 @@ local function IsAchievementComplete(achievementID, source)
 	return GetAchievementComparisonInfo(achievementID) == true
 end
 
+function coolstats.IsRaidStatisticComplete(statisticID, source)
+	local value
+	if source == "player" then
+		value = GetStatistic and GetStatistic(statisticID)
+	else
+		value = GetComparisonStatistic and GetComparisonStatistic(statisticID)
+	end
+	return (tonumber(value) or 0) > 0
+end
+
 local function CountHardModeProgress(raid, source)
 	local count = 0
 	for _, hardMode in ipairs(raid.hardModes) do
 		local completed = false
-		for _, achievementID in ipairs(hardMode.ids) do
+		for _, achievementID in ipairs(hardMode.ids or {}) do
 			if IsAchievementComplete(achievementID, source) then
 				completed = true
 				break
+			end
+		end
+		if not completed then
+			for _, statisticID in ipairs(hardMode.statisticIds or {}) do
+				if coolstats.IsRaidStatisticComplete(statisticID, source) then
+					completed = true
+					break
+				end
 			end
 		end
 		if completed then
@@ -1990,6 +2153,18 @@ local function CountHardModeProgress(raid, source)
 		end
 	end
 	return count
+end
+
+local function HasAchievementProgress(achievementIDs, source)
+	if type(achievementIDs) ~= "table" then
+		return false
+	end
+	for _, achievementID in ipairs(achievementIDs) do
+		if IsAchievementComplete(achievementID, source) then
+			return true
+		end
+	end
+	return false
 end
 
 local function BuildRaidProgress(source, unit)
@@ -2004,6 +2179,8 @@ local function BuildRaidProgress(source, unit)
 		hardLabel = raid.hardLabel,
 		hardCount = CountHardModeProgress(raid, source),
 		hardTotal = raid.hardTotal,
+		milestoneLabel = raid.milestoneLabel,
+		milestoneComplete = HasAchievementProgress(raid.milestoneAchievementIds, source),
 		level = unit and UnitLevel(unit) or nil,
 		updatedAt = now,
 		expiresAt = now + RAID_PROGRESS_CACHE_SECONDS,
@@ -2140,34 +2317,131 @@ local function QueueCurrentTooltipRefresh()
 	end)
 end
 
-local function RaidProgressFrame_OnUpdate(self)
+function coolstats.PruneRaidProgressRequestTimes(now)
+	local state = coolstats.raidProgressRequestState
+	local throttle = coolstats.RAID_PROGRESS_REQUEST_THROTTLE
+	while state.times[1] and now - state.times[1] >= throttle.window do
+		table.remove(state.times, 1)
+	end
+end
+
+function coolstats.GetRaidProgressRequestDelay(now)
+	now = tonumber(now) or GetTime()
+	coolstats.PruneRaidProgressRequestTimes(now)
+	local state = coolstats.raidProgressRequestState
+	local throttle = coolstats.RAID_PROGRESS_REQUEST_THROTTLE
+	local delay = math.max(0, (state.last + throttle.interval) - now)
+	if #state.times >= throttle.limit then
+		delay = math.max(delay, (state.times[1] + throttle.window) - now)
+	end
+	return delay
+end
+
+function coolstats.RecordRaidProgressRequest(now)
+	now = tonumber(now) or GetTime()
+	coolstats.PruneRaidProgressRequestTimes(now)
+	local state = coolstats.raidProgressRequestState
+	state.last = now
+	table.insert(state.times, now)
+end
+
+function coolstats.ResetRaidProgressRequestThrottle()
+	local state = coolstats.raidProgressRequestState
+	state.times = {}
+	state.last = -100
+	state.queued = nil
+end
+
+function coolstats.QueueRaidProgressRequest(unit, key)
+	local state = coolstats.raidProgressRequestState
+	if state.queued and state.queued.key == key then
+		return
+	end
+	state.queued = {
+		key = key,
+		unit = unit,
+		queuedAt = GetTime(),
+	}
+	tooltipFrame:SetScript("OnUpdate", coolstats.RaidProgressFrame_OnUpdate)
+end
+
+function coolstats.StartQueuedRaidProgressRequest(request, now)
+	local unit = request and request.unit
+	local key = request and request.key
+	if not unit or not key or not UnitExists(unit) or GetUnitCacheKey(unit) ~= key then
+		return false
+	end
+	if UnitIsVisible and not UnitIsVisible(unit) then
+		CacheRaidProgressFailure(key, true, "Move closer")
+		return false
+	end
+	if CanInspect and not CanInspect(unit) then
+		CacheRaidProgressFailure(key, true, "Move closer")
+		return false
+	end
+	if coolstats.IsAchievementComparisonUIVisible() then
+		CacheRaidProgressFailure(key, true, "Achievement UI busy")
+		return false
+	end
+
+	coolstats.ClearTooltipAchievementComparison()
+	local ok = pcall(SetAchievementComparisonUnit, unit)
+	if not ok then
+		CacheRaidProgressFailure(key, true, "Retry shortly")
+		return false
+	end
+
+	coolstats.RecordRaidProgressRequest(now)
+	tooltipAchievementComparisonOwned = true
+	pendingRaidProgress = {
+		key = key,
+		unit = unit,
+		requestedAt = now,
+	}
+	return true
+end
+
+function coolstats.RaidProgressFrame_OnUpdate(self)
 	local now = GetTime()
+	local state = coolstats.raidProgressRequestState
 	if pendingRaidProgress and coolstats.IsAchievementComparisonUIVisible() then
 		local interruptedKey = pendingRaidProgress.key
 		pendingRaidProgress = nil
 		tooltipAchievementComparisonOwned = false
-		CacheRaidProgressFailure(interruptedKey, true)
-		self:SetScript("OnUpdate", nil)
-		return
+		CacheRaidProgressFailure(interruptedKey, true, "Achievement UI busy")
 	end
 	if pendingRaidProgress and now - pendingRaidProgress.requestedAt >= RAID_PROGRESS_REQUEST_TIMEOUT_SECONDS then
 		local failedKey = pendingRaidProgress.key
 		pendingRaidProgress = nil
 		coolstats.ClearTooltipAchievementComparison()
-		CacheRaidProgressFailure(failedKey, true)
+		CacheRaidProgressFailure(failedKey, true, "Retry shortly")
 		RefreshTooltipForKey(failedKey)
 	end
 
-	if not pendingRaidProgress then
+	if not pendingRaidProgress and state.queued then
+		local currentUnit = GetTooltipUnit()
+		if not currentUnit or GetUnitCacheKey(currentUnit) ~= state.queued.key then
+			state.queued = nil
+		elseif now - state.queued.queuedAt >= coolstats.RAID_PROGRESS_REQUEST_THROTTLE.dwell
+			and coolstats.GetRaidProgressRequestDelay(now) <= 0
+		then
+			local request = state.queued
+			state.queued = nil
+			coolstats.StartQueuedRaidProgressRequest(request, now)
+		end
+	end
+
+	if not pendingRaidProgress and not state.queued then
 		self:SetScript("OnUpdate", nil)
 	end
 end
 
-CacheRaidProgressFailure = function(key, shouldRetry)
+CacheRaidProgressFailure = function(key, shouldRetry, message)
 	local now = GetNowSeconds()
 	raidProgressCache[key] = {
 		status = "failed",
 		retry = shouldRetry == true,
+		message = message,
 		updatedAt = now,
 		expiresAt = now + RAID_PROGRESS_FAILED_CACHE_SECONDS,
 	}
@@ -2185,7 +2459,13 @@ end
 
 local function RequestRaidProgress(unit, key)
 	EnsureTooltipDatabase()
-	if pendingRaidProgress or not key or IsCachedProgressUsable(raidProgressCache[key]) then
+	if not key or IsCachedProgressUsable(raidProgressCache[key]) then
+		return
+	end
+	if pendingRaidProgress and pendingRaidProgress.key == key then
+		return
+	end
+	if coolstats.raidProgressRequestState.queued and coolstats.raidProgressRequestState.queued.key == key then
 		return
 	end
 
@@ -2201,30 +2481,26 @@ local function RequestRaidProgress(unit, key)
 	end
 
 	if not SetAchievementComparisonUnit then
-		CacheRaidProgressFailure(key, false)
+		CacheRaidProgressFailure(key, false, "Unavailable")
 		return
 	end
 
 	if UnitIsVisible and not UnitIsVisible(unit) then
-		CacheRaidProgressFailure(key, true)
+		CacheRaidProgressFailure(key, true, "Move closer")
+		return
+	end
+
+	if CanInspect and not CanInspect(unit) then
+		CacheRaidProgressFailure(key, true, "Move closer")
 		return
 	end
 
 	if coolstats.IsAchievementComparisonUIVisible() then
-		CacheRaidProgressFailure(key, true)
+		CacheRaidProgressFailure(key, true, "Achievement UI busy")
 		return
 	end
 
-	coolstats.ClearTooltipAchievementComparison()
-	SetAchievementComparisonUnit(unit)
-	tooltipAchievementComparisonOwned = true
-
-	pendingRaidProgress = {
-		key = key,
-		unit = unit,
-		requestedAt = GetTime(),
-	}
-	tooltipFrame:SetScript("OnUpdate", RaidProgressFrame_OnUpdate)
+	coolstats.QueueRaidProgressRequest(unit, key)
 end
 
 local function AddRaidProgressLines(unit)
@@ -2239,9 +2515,8 @@ local function AddRaidProgressLines(unit)
 	local uwuProgress = BuildUwURaidProgress and BuildUwURaidProgress(unit)
 	if uwuProgress then
 		GameTooltip:AddLine(" ")
-		local hardText = string.format("H %d/%d", uwuProgress.hardCount, uwuProgress.hardTotal)
 		GameTooltip:AddLine("Raid Progress", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B)
-		GameTooltip:AddDoubleLine(uwuProgress.hardLabel, hardText, 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
+		GameTooltip:AddDoubleLine(uwuProgress.hardLabel, coolstats.FormatRaidProgressText(uwuProgress), 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
 		return true
 	end
 	if not GetCurrentRaid() then
@@ -2265,11 +2540,12 @@ local function AddRaidProgressLines(unit)
 
 	GameTooltip:AddLine(" ")
 	if progress and progress.status == "ready" then
-		local hardText = string.format("H %d/%d", progress.hardCount, progress.hardTotal)
 		GameTooltip:AddLine("Raid Progress", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B)
-		GameTooltip:AddDoubleLine(progress.hardLabel, hardText, 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
+		GameTooltip:AddDoubleLine(progress.hardLabel, coolstats.FormatRaidProgressText(progress), 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
 	elseif progress and progress.status == "failed" then
-		GameTooltip:AddDoubleLine("Raid Progress", progress.retry and "Move closer" or "Unavailable", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+		GameTooltip:AddDoubleLine("Raid Progress", progress.message or (progress.retry and "Retry shortly" or "Unavailable"), ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+	elseif coolstats.raidProgressRequestState.queued and coolstats.raidProgressRequestState.queued.key == key then
+		GameTooltip:AddDoubleLine("Raid Progress", "Waiting...", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
 	else
 		GameTooltip:AddDoubleLine("Raid Progress", "Loading...", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
 	end
@@ -2329,7 +2605,19 @@ end
 
 local function GetUwUBossRaidName(bossName)
 	local data = coolstatsUwUData
+	if data and data.phaseId == "toc" and coolstats.UWU_ULDUAR_RAID_BOSSES[bossName] then
+		return "Ulduar"
+	end
 	return UWU_BOSS_RAID_OVERRIDES[bossName] or (data and data.defaultRaidName) or "Ulduar"
+end
+
+function coolstats.FormatRaidProgressText(progress)
+	local milestoneText = progress and progress.milestoneComplete and "|cff20ff20" or "|cffff3030"
+	milestoneText = milestoneText .. tostring(progress and progress.milestoneLabel or "") .. "|r"
+	if (tonumber(progress and progress.hardTotal) or 0) > 0 then
+		return string.format("H %d/%d  %s", progress.hardCount or 0, progress.hardTotal, milestoneText)
+	end
+	return milestoneText
 end
 
 local function GetUwUBossDisplayName(bossName)
@@ -2374,9 +2662,31 @@ local function GetUwUBossIndexByName()
 	return indexes
 end
 
+local function HasUwUBossLog(player, bossIndex)
+	if type(player) ~= "table" or not bossIndex then
+		return false
+	end
+
+	local bestSpecBossData = player[8]
+	if type(bestSpecBossData) == "table" and GetUwUBossScoreCenti(bestSpecBossData[bossIndex]) then
+		return true
+	end
+
+	local bossDataBySpec = player[9]
+	if type(bossDataBySpec) == "table" then
+		for _, specBossData in pairs(bossDataBySpec) do
+			if type(specBossData) == "table" and GetUwUBossScoreCenti(specBossData[bossIndex]) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 BuildUwURaidProgress = function(unit)
-	local phaseId = coolstatsUwUData and coolstatsUwUData.phaseId or (coolstats.GetExpectedRealmPhaseId and coolstats.GetExpectedRealmPhaseId())
-	if phaseId and phaseId ~= "ulduar" then
+	local phaseId = coolstats.GetActiveUwUPhaseId()
+	local progressPhase = UWU_LOG_PROGRESS_PHASES[phaseId or CURRENT_UWU_PHASE_ID]
+	if not progressPhase then
 		return nil
 	end
 	local name = unit and UnitName(unit)
@@ -2393,8 +2703,8 @@ BuildUwURaidProgress = function(unit)
 	local indexes = GetUwUBossIndexByName()
 	local hardCount = 0
 	local hardTotal = 0
-	for index = 1, #UWU_PROGRESS_HARD_BOSSES do
-		local bossIndex = indexes[UWU_PROGRESS_HARD_BOSSES[index]]
+	for index = 1, #progressPhase.hardBosses do
+		local bossIndex = indexes[progressPhase.hardBosses[index]]
 		if bossIndex then
 			hardTotal = hardTotal + 1
 			if bossData and GetUwUBossScoreCenti(bossData[bossIndex]) then
@@ -2409,9 +2719,11 @@ BuildUwURaidProgress = function(unit)
 
 	return {
 		status = "ready",
-		hardLabel = "Ulduar 25H Logs",
+		hardLabel = progressPhase.hardLabel,
 		hardCount = hardCount,
 		hardTotal = hardTotal,
+		milestoneLabel = progressPhase.milestoneLabel,
+		milestoneComplete = HasUwUBossLog(player, indexes[progressPhase.milestoneBoss]),
 		level = unit and UnitLevel(unit) or nil,
 		updatedAt = GetNowSeconds(),
 		expiresAt = GetNowSeconds() + RAID_PROGRESS_CACHE_SECONDS,
@@ -3687,6 +3999,14 @@ local function CreateInspectUwUPanel()
 	end
 	inspectUwUPanel = CreateUwUPanel("coolstatsUwUInspectPanel", InspectFrame, InspectFrame, false)
 	inspectUwUPanel.isInspectPanel = true
+
+	local close = CreateFrame("Button", nil, inspectUwUPanel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", inspectUwUPanel, "TOPRIGHT", -3, -4)
+	close:SetScript("OnClick", function()
+		inspectUwUPanel.dismissedName = NormalizeName(inspectUwUPanel.renderName or "")
+		inspectUwUPanel:Hide()
+	end)
+	inspectUwUPanel.close = close
 end
 
 local function CreateLookupUwUPanel()
@@ -3694,6 +4014,14 @@ local function CreateLookupUwUPanel()
 		return
 	end
 	lookupUwUPanel = CreateUwUPanel("coolstatsUwULookupPanel", UIParent, nil, true)
+end
+
+function coolstats.ResizeUwUPanelForRows(panel, state)
+	local phaseId = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()
+	local minimumHeight = phaseId == "toc" and 620 or UWU_INSPECT_PANEL_HEIGHT
+	local visibleRows = math.max(0, ((state and state.index) or 1) - 1)
+	local requiredHeight = 68 + (visibleRows * UWU_INSPECT_ROW_HEIGHT)
+	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, math.max(minimumHeight, requiredHeight))
 end
 
 RenderUwUPanel = function(panel, name, player, subtitle)
@@ -3710,6 +4038,8 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	panel.renderName = name
 	panel.renderPlayer = player
 	panel.renderSubtitle = subtitle
+	local phaseId = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()
+	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, phaseId == "toc" and 620 or UWU_INSPECT_PANEL_HEIGHT)
 	UpdateCachedGearPanel(panel, name, player)
 	for index = 1, #panel.rows do
 		panel.rows[index]:Hide()
@@ -3723,6 +4053,7 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 		local state = { rows = panel.rows, index = 1, stripeIndex = 1, panel = panel }
 		AddInspectPanelSection(state, "Summary")
 		AddInspectPanelLine(state, "Raid Score", "Not ranked", 0.45, 0.45, 0.45)
+		coolstats.ResizeUwUPanelForRows(panel, state)
 		return
 	end
 
@@ -3805,6 +4136,12 @@ UpdateInspectUwUPanel = function()
 	local unit = GetInspectUwUUnit()
 	CacheInspectGearForUnit(unit)
 	local name = unit and UnitName(unit)
+	local normalizedName = NormalizeName(name or "")
+	if inspectUwUPanel.dismissedName == normalizedName then
+		inspectUwUPanel:Hide()
+		return
+	end
+	inspectUwUPanel.dismissedName = nil
 	local player = name and GetUwUPlayerByName(name)
 	RenderUwUPanel(inspectUwUPanel, name or "No inspected player", player, GetUnitGuildNameText(unit) or "UwU Logs")
 end
@@ -4041,6 +4378,15 @@ function coolstats.AcquireLogAnalysisChartDot(chart, index)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:AddLine(self.playerLabel or "Player", self.red or 1, self.green or 1, self.blue or 1)
 		GameTooltip:AddDoubleLine(self.bossLabel or "Boss", self.parseText or "-", 0.86, 0.86, 0.78, self.red or 1, self.green or 1, self.blue or 1)
+		if self.comparisonParseText then
+			GameTooltip:AddDoubleLine("Parse vs " .. tostring(self.comparisonLabel or "other player"), self.comparisonParseText, 0.78, 0.78, 0.72, self.comparisonParseRed, self.comparisonParseGreen, self.comparisonParseBlue)
+		end
+		if self.dpsText then
+			GameTooltip:AddDoubleLine("DPS", self.dpsText, 0.78, 0.78, 0.72, self.red or 1, self.green or 1, self.blue or 1)
+		end
+		if self.comparisonDpsText then
+			GameTooltip:AddDoubleLine("DPS vs " .. tostring(self.comparisonLabel or "other player"), self.comparisonDpsText, 0.78, 0.78, 0.72, self.comparisonDpsRed, self.comparisonDpsGreen, self.comparisonDpsBlue)
+		end
 		GameTooltip:Show()
 	end)
 	dot:SetScript("OnLeave", function()
@@ -4057,9 +4403,22 @@ function coolstats.AcquireLogAnalysisCurvePoint(chart, index)
 	end
 	point = chart:CreateTexture(nil, "ARTWORK")
 	point:SetTexture("Interface\\Buttons\\WHITE8X8")
-	SetFrameSize(point, 3, 3)
+	SetFrameSize(point, 2, 2)
 	chart.curvePoints[index] = point
 	return point
+end
+
+function coolstats.AcquireLogAnalysisBossLabel(chart, index)
+	local label = chart.bossLabels[index]
+	if label then
+		return label
+	end
+	label = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	label:SetWidth(28)
+	label:SetJustifyH("CENTER")
+	label:SetTextColor(0.72, 0.72, 0.68)
+	chart.bossLabels[index] = label
+	return label
 end
 
 function coolstats.GetLogAnalysisMainRaidBossIndexes()
@@ -4078,7 +4437,7 @@ function coolstats.AddLogAnalysisCurveRun(chart, run, red, green, blue, startPoi
 	if #run < 2 then
 		return startPointIndex
 	end
-	local samplesPerSegment = 10
+	local samplesPerSegment = 18
 	for index = 1, #run - 1 do
 		local p0 = run[math.max(1, index - 1)]
 		local p1 = run[index]
@@ -4100,11 +4459,12 @@ function coolstats.AddLogAnalysisCurveRun(chart, run, red, green, blue, startPoi
 				+ ((2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2)
 				+ ((-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
 			)
+			y = math.max(chart.plotBottom or y, math.min(chart.plotTop or y, y))
 			startPointIndex = startPointIndex + 1
 			local point = coolstats.AcquireLogAnalysisCurvePoint(chart, startPointIndex)
 			point:ClearAllPoints()
 			point:SetPoint("CENTER", chart, "BOTTOMLEFT", x, y)
-			point:SetVertexColor(red, green, blue, 0.84)
+			point:SetVertexColor(red, green, blue, 0.90)
 			point:Show()
 		end
 	end
@@ -4113,7 +4473,7 @@ function coolstats.AddLogAnalysisCurveRun(chart, run, red, green, blue, startPoi
 	local point = coolstats.AcquireLogAnalysisCurvePoint(chart, startPointIndex)
 	point:ClearAllPoints()
 	point:SetPoint("CENTER", chart, "BOTTOMLEFT", final.x, final.y)
-	point:SetVertexColor(red, green, blue, 0.84)
+	point:SetVertexColor(red, green, blue, 0.90)
 	point:Show()
 	return startPointIndex
 end
@@ -4129,6 +4489,9 @@ function coolstats.RenderLogAnalysisChart(panel, selfPlayer, comparePlayer, self
 	for _, point in ipairs(chart.curvePoints) do
 		point:Hide()
 	end
+	for _, label in ipairs(chart.bossLabels) do
+		label:Hide()
+	end
 
 	local mainRaidBossIndexes = coolstats.GetLogAnalysisMainRaidBossIndexes()
 	local bossCount = #mainRaidBossIndexes
@@ -4138,28 +4501,84 @@ function coolstats.RenderLogAnalysisChart(panel, selfPlayer, comparePlayer, self
 	local plotTop = 140
 	local plotWidth = plotRight - plotLeft
 	local plotHeight = plotTop - plotBottom
+	chart.plotBottom = plotBottom
+	chart.plotTop = plotTop
 	local selfScore = GetUwUSpecScoreCenti(selfPlayer, panel.selfSpecIndex)
 	local compareScore = GetUwUSpecScoreCenti(comparePlayer, panel.compareSpecIndex)
-	local selfR, selfG, selfB = GetUwUScoreColor(selfScore)
-	local compareR, compareG, compareB = GetUwUScoreColor(compareScore)
+	local selfR, selfG, selfB = 0.05, 0.52, 1.0
+	local compareR, compareG, compareB = 1.0, 0.78, 0.28
+	local lowestScore = nil
+	for _, bossIndex in ipairs(mainRaidBossIndexes) do
+		for _, bosses in ipairs({ selfBosses, compareBosses }) do
+			local score = GetUwUBossScoreCenti(bosses[bossIndex])
+			if score and (not lowestScore or score < lowestScore) then
+				lowestScore = score
+			end
+		end
+	end
+	local axisMinimum = lowestScore and math.max(0, (math.floor(lowestScore / 500) * 500) - 500) or 0
+	if axisMinimum >= 10000 then
+		axisMinimum = 9500
+	end
+	chart.axisMinimumCenti = axisMinimum
+	local axisRange = math.max(500, 10000 - axisMinimum)
+	local axisStep = math.max(500, math.ceil((axisRange / 4) / 500) * 500)
+	local axisValues = {}
+	local axisValue = axisMinimum
+	while axisValue < 10000 and #axisValues < 5 do
+		axisValues[#axisValues + 1] = axisValue
+		axisValue = axisValue + axisStep
+	end
+	axisValues[#axisValues + 1] = 10000
+	for index = 1, #chart.axisLabels do
+		local label = chart.axisLabels[index]
+		local grid = chart.axisGrids[index]
+		local value = axisValues[index]
+		if value then
+			local y = plotBottom + (((value - axisMinimum) / axisRange) * plotHeight)
+			grid:ClearAllPoints()
+			grid:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", plotLeft, y)
+			grid:SetPoint("BOTTOMRIGHT", chart, "BOTTOMRIGHT", -18, y)
+			label:ClearAllPoints()
+			label:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", 8, y - 6)
+			label:SetText(tostring(math.floor((value / 100) + 0.5)))
+			grid:Show()
+			label:Show()
+		else
+			grid:Hide()
+			label:Hide()
+		end
+	end
 	chart.selfLegend:SetText((selfPlayer[1] or "You") .. " " .. FormatUwUScore(selfScore))
 	chart.selfLegend:SetTextColor(selfR, selfG, selfB)
 	chart.compareLegend:SetText((comparePlayer[1] or "Compared") .. " " .. FormatUwUScore(compareScore))
 	chart.compareLegend:SetTextColor(compareR, compareG, compareB)
+	for chartIndex, bossIndex in ipairs(mainRaidBossIndexes) do
+		local bossName = coolstatsUwUData.bosses[bossIndex]
+		local x = bossCount > 1 and (plotLeft + (((chartIndex - 1) / (bossCount - 1)) * plotWidth)) or (plotLeft + (plotWidth / 2))
+		local label = coolstats.AcquireLogAnalysisBossLabel(chart, chartIndex)
+		label:ClearAllPoints()
+		label:SetPoint("CENTER", chart, "BOTTOMLEFT", x, 25)
+		label:SetText(coolstats.UWU_BOSS_CHART_ABBREVIATIONS[bossName] or string.upper(string.sub(GetUwUBossDisplayName(bossName), 1, 2)))
+		label:Show()
+	end
 
 	local dotIndex = 0
 	local curvePointIndex = 0
 	for seriesIndex, series in ipairs({
-		{ player = selfPlayer, bosses = selfBosses, red = selfR, green = selfG, blue = selfB },
-		{ player = comparePlayer, bosses = compareBosses, red = compareR, green = compareG, blue = compareB },
+		{ player = selfPlayer, bosses = selfBosses, otherPlayer = comparePlayer, otherBosses = compareBosses, red = selfR, green = selfG, blue = selfB },
+		{ player = comparePlayer, bosses = compareBosses, otherPlayer = selfPlayer, otherBosses = selfBosses, red = compareR, green = compareG, blue = compareB },
 	}) do
 		local run = {}
 		for chartIndex, bossIndex in ipairs(mainRaidBossIndexes) do
 			local bossName = coolstatsUwUData.bosses[bossIndex]
 			local score = GetUwUBossScoreCenti(series.bosses[bossIndex])
 			if score then
+				local otherScore = GetUwUBossScoreCenti(series.otherBosses[bossIndex])
+				local ownDps = tonumber(GetUwUBossDps(series.bosses[bossIndex])) or 0
+				local otherDps = tonumber(GetUwUBossDps(series.otherBosses[bossIndex])) or 0
 				local x = bossCount > 1 and (plotLeft + (((chartIndex - 1) / (bossCount - 1)) * plotWidth)) or (plotLeft + (plotWidth / 2))
-				local y = plotBottom + (math.max(0, math.min(10000, score)) / 10000 * plotHeight)
+				local y = plotBottom + ((math.max(axisMinimum, math.min(10000, score)) - axisMinimum) / axisRange * plotHeight)
 				run[#run + 1] = { x = x, y = y }
 				dotIndex = dotIndex + 1
 				local dot = coolstats.AcquireLogAnalysisChartDot(chart, dotIndex)
@@ -4170,6 +4589,20 @@ function coolstats.RenderLogAnalysisChart(panel, selfPlayer, comparePlayer, self
 				dot.bossLabel = GetUwUBossDisplayLabel(bossName)
 				dot.parseText = FormatUwUScore(score)
 				dot.red, dot.green, dot.blue = series.red, series.green, series.blue
+				dot.comparisonLabel = series.otherPlayer[1] or "other player"
+				dot.comparisonParseText = nil
+				dot.comparisonDpsText = nil
+				dot.dpsText = ownDps > 0 and FormatUwUDps(ownDps) or nil
+				if otherScore then
+					local parseDifference = (score - otherScore) / 100
+					dot.comparisonParseText = coolstats.FormatLogAnalysisDifference(parseDifference)
+					dot.comparisonParseRed, dot.comparisonParseGreen, dot.comparisonParseBlue = coolstats.GetLogAnalysisDifferenceColor(parseDifference)
+				end
+				if ownDps > 0 and otherDps > 0 then
+					local dpsDifference = ((ownDps - otherDps) / otherDps) * 100
+					dot.comparisonDpsText = coolstats.FormatLogAnalysisDifference(dpsDifference, "%")
+					dot.comparisonDpsRed, dot.comparisonDpsGreen, dot.comparisonDpsBlue = coolstats.GetLogAnalysisDifferenceColor(dpsDifference)
+				end
 				dot:Show()
 			else
 				curvePointIndex = coolstats.AddLogAnalysisCurveRun(chart, run, series.red, series.green, series.blue, curvePointIndex)
@@ -4279,20 +4712,20 @@ function coolstats.CreateLogAnalysisPanel()
 	chart:SetBackdropBorderColor(0.35, 0.42, 0.45, 0.90)
 	chart.dots = {}
 	chart.curvePoints = {}
-	for index, value in ipairs({ 0, 25, 50, 75, 100 }) do
-		local y = 36 + ((value / 100) * 104)
+	chart.bossLabels = {}
+	chart.axisGrids = {}
+	chart.axisLabels = {}
+	for index = 1, 6 do
 		local grid = chart:CreateTexture(nil, "BACKGROUND")
 		grid:SetTexture("Interface\\Buttons\\WHITE8X8")
-		grid:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", 46, y)
-		grid:SetPoint("BOTTOMRIGHT", chart, "BOTTOMRIGHT", -18, y)
 		grid:SetHeight(1)
 		grid:SetVertexColor(0.45, 0.45, 0.45, index == 1 and 0.40 or 0.18)
 		local label = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		label:SetPoint("BOTTOMLEFT", chart, "BOTTOMLEFT", 8, y - 6)
 		label:SetWidth(30)
 		label:SetJustifyH("RIGHT")
-		label:SetText(tostring(value))
 		label:SetTextColor(0.62, 0.62, 0.58)
+		chart.axisGrids[index] = grid
+		chart.axisLabels[index] = label
 	end
 	local selfLegend = chart:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	selfLegend:SetPoint("BOTTOMRIGHT", chart, "BOTTOM", -10, 8)
@@ -4311,7 +4744,7 @@ function coolstats.CreateLogAnalysisPanel()
 	panel.specButtons = {}
 	for index = 1, 3 do
 		for _, side in ipairs({ "self", "compare" }) do
-			local button = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			local button = CreateFrame("CheckButton", nil, panel)
 			SetFrameSize(button, 34, 34)
 			if side == "self" then
 				button:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -108 - ((index - 1) * 38))
@@ -4322,6 +4755,28 @@ function coolstats.CreateLogAnalysisPanel()
 			end
 			button.analysisSide = side
 			button.analysisPanel = panel
+			button:SetFrameLevel(panel:GetFrameLevel() + 7)
+			button:RegisterForClicks("LeftButtonUp")
+			local tabBackground = button:CreateTexture(nil, "BACKGROUND")
+			tabBackground:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+			SetFrameSize(tabBackground, 64, 64)
+			tabBackground:SetPoint("TOPLEFT", button, "TOPLEFT", -3, 11)
+			button.tabBackground = tabBackground
+			button:SetNormalTexture("Interface\\Icons\\Ability_Marksmanship")
+			local normalTexture = button:GetNormalTexture()
+			if normalTexture then
+				normalTexture:SetAllPoints(button)
+			end
+			button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+			local highlightTexture = button:GetHighlightTexture()
+			if highlightTexture then
+				highlightTexture:SetAllPoints(button)
+			end
+			button:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")
+			local checkedTexture = button:GetCheckedTexture()
+			if checkedTexture then
+				checkedTexture:SetAllPoints(button)
+			end
 			button:SetScript("OnClick", coolstats.LogAnalysisSpecButton_OnClick)
 			button:SetScript("OnEnter", coolstats.LogAnalysisSpecButton_OnEnter)
 			button:SetScript("OnLeave", function()
@@ -4332,7 +4787,7 @@ function coolstats.CreateLogAnalysisPanel()
 	end
 
 	panel.rows = {}
-	for index = 1, 22 do
+	for index = 1, 32 do
 		local row = CreateFrame("Frame", nil, panel)
 		SetFrameSize(row, 900, 18)
 		row:SetPoint("TOP", panel, "TOP", 0, -92 - ((index - 1) * 18))
@@ -4381,6 +4836,12 @@ end
 function coolstats.RenderLogAnalysisPanel(panel)
 	if not panel or not panel.selfPlayer or not panel.comparePlayer then
 		return
+	end
+	local panelHeight = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId() == "toc" and 860 or 720
+	SetFrameSize(panel, 1000, panelHeight)
+	if panel.SetScale and UIParent and UIParent.GetHeight then
+		local parentHeight = tonumber(UIParent:GetHeight())
+		panel:SetScale(parentHeight and parentHeight > 0 and math.min(1, (parentHeight - 20) / panelHeight) or 1)
 	end
 	local selfPlayer = panel.selfPlayer
 	local comparePlayer = panel.comparePlayer
@@ -4528,9 +4989,16 @@ local function HookInspectUwUPanel()
 		return
 	end
 	InspectFrame.__coolstatsUwUInspectHooked = true
-	InspectFrame:HookScript("OnShow", UpdateInspectUwUPanel)
+	InspectFrame:HookScript("OnShow", function()
+		CreateInspectUwUPanel()
+		if inspectUwUPanel then
+			inspectUwUPanel.dismissedName = nil
+		end
+		UpdateInspectUwUPanel()
+	end)
 	InspectFrame:HookScript("OnHide", function()
 		if inspectUwUPanel then
+			inspectUwUPanel.dismissedName = nil
 			inspectUwUPanel:Hide()
 		end
 	end)
@@ -7088,6 +7556,7 @@ tooltipFrame:RegisterEvent("INSPECT_READY")
 tooltipFrame:RegisterEvent("INSPECT_TALENT_READY")
 tooltipFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
 tooltipFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+tooltipFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	if event == "ADDON_LOADED" then
 		local addonName = ...
@@ -7103,6 +7572,23 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		elseif addonName == "Blizzard_AchievementUI" then
 			coolstats.HookAchievementComparisonUI()
 		end
+		return
+	end
+
+	if event == "PLAYER_ENTERING_WORLD" then
+		if coolstats.EnsureRealmDataLoaded then
+			coolstats.EnsureRealmDataLoaded()
+		end
+		for key in pairs(raidProgressCache) do
+			raidProgressCache[key] = nil
+		end
+		for key in pairs(uwuTooltipCache) do
+			uwuTooltipCache[key] = nil
+		end
+		pendingRaidProgress = nil
+		coolstats.raidProgressRequestState.queued = nil
+		coolstats.ClearTooltipAchievementComparison()
+		self:SetScript("OnUpdate", nil)
 		return
 	end
 
@@ -7161,8 +7647,9 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 	local key = pendingRaidProgress.key
 	if coolstats.IsAchievementComparisonUIVisible() then
 		pendingRaidProgress = nil
+		coolstats.raidProgressRequestState.queued = nil
 		tooltipAchievementComparisonOwned = false
-		CacheRaidProgressFailure(key, true)
+		CacheRaidProgressFailure(key, true, "Achievement UI busy")
 		self:SetScript("OnUpdate", nil)
 		return
 	end
@@ -7172,7 +7659,11 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 
 	coolstats.ClearTooltipAchievementComparison()
 
-	self:SetScript("OnUpdate", nil)
+	if coolstats.raidProgressRequestState.queued then
+		self:SetScript("OnUpdate", coolstats.RaidProgressFrame_OnUpdate)
+	else
+		self:SetScript("OnUpdate", nil)
+	end
 	RefreshTooltipForKey(key)
 end)
 

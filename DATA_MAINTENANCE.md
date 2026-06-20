@@ -5,12 +5,17 @@ outside the game and bundled into releases.
 
 ## Realm Profiles
 
-- **Onyxia:** Ulduar and Emalon.
+- **Onyxia (current):** Ulduar and Emalon.
+- **Onyxia (prepared next phase):** Trial of the Grand Crusader 25 heroic,
+  retained Ulduar history, Onyxia, and Koralon.
 - **Icecrown:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
 - **Lordaeron:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
 
 Onyxia, Icecrown, and Lordaeron data is generated as separate load-on-demand addons.
 Only the dataset matching the player's current realm is loaded in-game.
+The prepared Onyxia TOGC profile remains inactive until its realm-data manifest
+is explicitly promoted, so staging or validation cannot replace live Ulduar data.
+Its Ulduar section is retained below TOGC and is expanded by default.
 
 ## Dataset Updates
 
