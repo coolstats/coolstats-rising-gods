@@ -2005,10 +2005,10 @@ local function CachedGearButton_OnClick(self)
 end
 
 function coolstats.IsAchievementComparisonUIVisible()
-	if AchievementFrameComparison and AchievementFrameComparison:IsShown() then
+	if AchievementFrameComparison and AchievementFrameComparison.IsVisible and AchievementFrameComparison:IsVisible() then
 		return true
 	end
-	if AchievementFrame and AchievementFrame:IsShown() then
+	if AchievementFrame and AchievementFrame.IsVisible and AchievementFrame:IsVisible() then
 		if AchievementFrame.isComparison then
 			return true
 		end
@@ -2019,8 +2019,8 @@ function coolstats.IsAchievementComparisonUIVisible()
 	return false
 end
 
-function coolstats.ClearTooltipAchievementComparison()
-	if not tooltipAchievementComparisonOwned then
+function coolstats.ClearTooltipAchievementComparison(force)
+	if not tooltipAchievementComparisonOwned and not force then
 		return
 	end
 	if coolstats.IsAchievementComparisonUIVisible() then
@@ -2384,7 +2384,7 @@ function coolstats.StartQueuedRaidProgressRequest(request, now)
 		return false
 	end
 
-	coolstats.ClearTooltipAchievementComparison()
+	coolstats.ClearTooltipAchievementComparison(true)
 	local ok = pcall(SetAchievementComparisonUnit, unit)
 	if not ok then
 		CacheRaidProgressFailure(key, true, "Retry shortly")
@@ -2512,14 +2512,15 @@ local function AddRaidProgressLines(unit)
 		return false
 	end
 
+	local raid = GetCurrentRaid()
 	local uwuProgress = BuildUwURaidProgress and BuildUwURaidProgress(unit)
-	if uwuProgress then
+	if uwuProgress and (uwuProgress.hasCurrentLogs or not raid) then
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddLine("Raid Progress", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B)
 		GameTooltip:AddDoubleLine(uwuProgress.hardLabel, coolstats.FormatRaidProgressText(uwuProgress), 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
 		return true
 	end
-	if not GetCurrentRaid() then
+	if not raid then
 		return false
 	end
 
@@ -2539,15 +2540,15 @@ local function AddRaidProgressLines(unit)
 	end
 
 	GameTooltip:AddLine(" ")
+	GameTooltip:AddLine("Raid Progress", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B)
 	if progress and progress.status == "ready" then
-		GameTooltip:AddLine("Raid Progress", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B)
 		GameTooltip:AddDoubleLine(progress.hardLabel, coolstats.FormatRaidProgressText(progress), 1.0, 1.0, 1.0, 0.0, 1.0, 0.25)
 	elseif progress and progress.status == "failed" then
-		GameTooltip:AddDoubleLine("Raid Progress", progress.message or (progress.retry and "Retry shortly" or "Unavailable"), ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+		GameTooltip:AddDoubleLine(raid.hardLabel, progress.message or (progress.retry and "Retry shortly" or "Unavailable"), 1.0, 1.0, 1.0, 0.6, 0.6, 0.6)
 	elseif coolstats.raidProgressRequestState.queued and coolstats.raidProgressRequestState.queued.key == key then
-		GameTooltip:AddDoubleLine("Raid Progress", "Waiting...", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+		GameTooltip:AddDoubleLine(raid.hardLabel, "Waiting...", 1.0, 1.0, 1.0, 0.6, 0.6, 0.6)
 	else
-		GameTooltip:AddDoubleLine("Raid Progress", "Loading...", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, 0.6, 0.6, 0.6)
+		GameTooltip:AddDoubleLine(raid.hardLabel, "Loading...", 1.0, 1.0, 1.0, 0.6, 0.6, 0.6)
 	end
 	return true
 end
@@ -2631,12 +2632,129 @@ function coolstats.GetUwUHistoricalOverallLabel()
 end
 
 function coolstats.FormatRaidProgressText(progress)
+	local milestoneLabel = tostring(progress and progress.milestoneLabel or "")
 	local milestoneText = progress and progress.milestoneComplete and "|cff20ff20" or "|cffff3030"
-	milestoneText = milestoneText .. tostring(progress and progress.milestoneLabel or "") .. "|r"
+	milestoneText = milestoneText .. milestoneLabel .. "|r"
 	if (tonumber(progress and progress.hardTotal) or 0) > 0 then
-		return string.format("H %d/%d  %s", progress.hardCount or 0, progress.hardTotal, milestoneText)
+		local hardText = string.format("H %d/%d", progress.hardCount or 0, progress.hardTotal)
+		return milestoneLabel ~= "" and (hardText .. "  " .. milestoneText) or hardText
 	end
-	return milestoneText
+	return milestoneLabel ~= "" and milestoneText or ""
+end
+
+function coolstats.NormalizePlayerLogLinkName(name)
+	name = tostring(name or "")
+	name = string.gsub(name, "^%s+", "")
+	name = string.gsub(name, "%s+$", "")
+	name = string.gsub(name, "[%c|:]", "")
+	return string.sub(name, 1, 48)
+end
+
+function coolstats.BuildPlayerLogLink(name)
+	name = coolstats.NormalizePlayerLogLinkName(name)
+	if name == "" then
+		return nil
+	end
+	return "|cff00c0ff|Hplayer:" .. name .. ":coolstatslogs|h[coolstats: " .. name .. "]|h|r"
+end
+
+function coolstats.BuildPlayerLogToken(name)
+	name = coolstats.NormalizePlayerLogLinkName(name)
+	if name == "" then
+		return nil
+	end
+	return "[coolstats: " .. name .. "]"
+end
+
+function coolstats.InsertPlayerLogLink(name)
+	local token = coolstats.BuildPlayerLogToken(name)
+	if not token then
+		return false
+	end
+	if ChatEdit_InsertLink and ChatEdit_InsertLink(token) then
+		return true
+	end
+	if ChatFrame_OpenChat then
+		ChatFrame_OpenChat(token, DEFAULT_CHAT_FRAME)
+		return true
+	end
+	return false
+end
+
+function coolstats.GetPlayerNameFromLogLink(link)
+	local name = string.match(tostring(link or ""), "^player:([^:]+):coolstatslogs$")
+	name = coolstats.NormalizePlayerLogLinkName(name)
+	return name ~= "" and name or nil
+end
+
+function coolstats.HandlePlayerLogLink(link)
+	local name = coolstats.GetPlayerNameFromLogLink(link)
+	if not name then
+		return false
+	end
+	if IsModifiedClick and IsModifiedClick("CHATLINK") then
+		coolstats.InsertPlayerLogLink(name)
+	elseif coolstats.ShowUwULogsPanelForName then
+		coolstats.ShowUwULogsPanelForName(name)
+	end
+	return true
+end
+
+function coolstats.InstallPlayerLogLinkHandler()
+	if coolstats.playerLogLinkHandlerInstalled or type(SetItemRef) ~= "function" then
+		return
+	end
+	coolstats.playerLogLinkHandlerInstalled = true
+	coolstats.originalSetItemRef = SetItemRef
+	SetItemRef = function(link, text, button, chatFrame)
+		if coolstats.HandlePlayerLogLink(link) then
+			return
+		end
+		return coolstats.originalSetItemRef(link, text, button, chatFrame)
+	end
+end
+
+coolstats.PLAYER_LOG_CHAT_EVENTS = {
+	"CHAT_MSG_SAY",
+	"CHAT_MSG_YELL",
+	"CHAT_MSG_PARTY",
+	"CHAT_MSG_PARTY_LEADER",
+	"CHAT_MSG_RAID",
+	"CHAT_MSG_RAID_LEADER",
+	"CHAT_MSG_RAID_WARNING",
+	"CHAT_MSG_GUILD",
+	"CHAT_MSG_OFFICER",
+	"CHAT_MSG_WHISPER",
+	"CHAT_MSG_WHISPER_INFORM",
+	"CHAT_MSG_CHANNEL",
+	"CHAT_MSG_BATTLEGROUND",
+	"CHAT_MSG_BATTLEGROUND_LEADER",
+	"CHAT_MSG_BN_WHISPER",
+	"CHAT_MSG_BN_WHISPER_INFORM",
+	"CHAT_MSG_BN_CONVERSATION",
+}
+
+function coolstats.LinkifyPlayerLogTokens(message)
+	if type(message) ~= "string" or not string.find(message, "[coolstats:", 1, true) then
+		return message
+	end
+	return (string.gsub(message, "%[coolstats:%s*([^%]]+)%]", function(name)
+		return coolstats.BuildPlayerLogLink(name) or ("[coolstats: " .. tostring(name or "") .. "]")
+	end))
+end
+
+function coolstats.PlayerLogChatFilter(frame, event, message, ...)
+	return false, coolstats.LinkifyPlayerLogTokens(message), ...
+end
+
+function coolstats.InstallPlayerLogChatFilters()
+	if coolstats.playerLogChatFiltersInstalled or not ChatFrame_AddMessageEventFilter then
+		return
+	end
+	coolstats.playerLogChatFiltersInstalled = true
+	for _, event in ipairs(coolstats.PLAYER_LOG_CHAT_EVENTS) do
+		ChatFrame_AddMessageEventFilter(event, coolstats.PlayerLogChatFilter)
+	end
 end
 
 local function GetUwUBossDisplayName(bossName)
@@ -2710,14 +2828,6 @@ BuildUwURaidProgress = function(unit)
 	end
 	local name = unit and UnitName(unit)
 	local player = name and GetUwUPlayerByName and GetUwUPlayerByName(name)
-	if not player then
-		return nil
-	end
-
-	local bossData = player[8]
-	if type(bossData) ~= "table" or not next(bossData) then
-		return nil
-	end
 
 	local indexes = GetUwUBossIndexByName()
 	local hardCount = 0
@@ -2726,7 +2836,7 @@ BuildUwURaidProgress = function(unit)
 		local bossIndex = indexes[progressPhase.hardBosses[index]]
 		if bossIndex then
 			hardTotal = hardTotal + 1
-			if bossData and GetUwUBossScoreCenti(bossData[bossIndex]) then
+			if HasUwUBossLog(player, bossIndex) then
 				hardCount = hardCount + 1
 			end
 		end
@@ -2747,6 +2857,7 @@ BuildUwURaidProgress = function(unit)
 		updatedAt = GetNowSeconds(),
 		expiresAt = GetNowSeconds() + RAID_PROGRESS_CACHE_SECONDS,
 		source = "uwu",
+		hasCurrentLogs = hardCount > 0,
 	}
 end
 
@@ -2837,13 +2948,25 @@ local function GetUwUSpecBossData(player, specIndex)
 	end
 	specIndex = specIndex or player[4]
 	local perSpecBossData = player[9]
+	local bossData
 	if type(perSpecBossData) == "table" and type(perSpecBossData[specIndex]) == "table" then
-		return perSpecBossData[specIndex]
+		bossData = perSpecBossData[specIndex]
+	elseif specIndex == player[4] then
+		bossData = player[8]
 	end
-	if specIndex == player[4] then
-		return player[8]
+	if coolstats.GetActiveUwUPhaseId() == "toc" and type(player[8]) == "table" then
+		local algalonIndex = GetUwUBossIndexByName()["Algalon the Observer"]
+		local aggregateAlgalon = algalonIndex and player[8][algalonIndex]
+		if aggregateAlgalon and (type(bossData) ~= "table" or not bossData[algalonIndex]) then
+			local mergedBossData = {}
+			for bossIndex, value in pairs(bossData or {}) do
+				mergedBossData[bossIndex] = value
+			end
+			mergedBossData[algalonIndex] = aggregateAlgalon
+			return mergedBossData
+		end
 	end
-	return nil
+	return bossData
 end
 
 local function GetUwUSpecIcon(player, specIndex, panel)
@@ -3861,6 +3984,31 @@ local function CreateUwUPanel(frameName, parent, anchorFrame, standalone)
 	title:SetText("")
 	panel.title = title
 
+	local titleLinkButton = CreateFrame("Button", nil, panel)
+	SetFrameSize(titleLinkButton, UWU_INSPECT_PANEL_WIDTH - 56, 18)
+	titleLinkButton:SetPoint("CENTER", title, "CENTER", 0, 0)
+	titleLinkButton:SetFrameLevel(panel:GetFrameLevel() + 8)
+	titleLinkButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	titleLinkButton:SetScript("OnClick", function(self, button)
+		if button == "RightButton" or (IsModifiedClick and IsModifiedClick("CHATLINK")) then
+			coolstats.InsertPlayerLogLink(self:GetParent().renderName)
+		end
+	end)
+	titleLinkButton:SetScript("OnEnter", function(self)
+		local linkName = self:GetParent().renderName
+		if not linkName or linkName == "" then
+			return
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(linkName, 0.0, 0.75, 1.0)
+		GameTooltip:AddLine("Shift-click or right-click to link these logs in chat.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	titleLinkButton:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	panel.titleLinkButton = titleLinkButton
+
 	local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
 	subtitle:SetWidth(UWU_INSPECT_PANEL_WIDTH - 16)
@@ -4102,12 +4250,18 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	end
 	local specName = GetUwUSpecName(player, selectedSpecIndex) or "Unknown"
 	local rank = GetUwUSpecRank(player, selectedSpecIndex)
+	local classFile = UWU_CLASS_FILE_BY_INDEX[player[3]]
+	local classColor = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
 	local titleText = (player[1] or name or "Unknown") .. " - " .. specName
 	if currentPhaseRanked and rank then
 		titleText = titleText .. " #" .. tostring(rank)
 	end
 	panel.title:SetText(titleText)
-	panel.title:SetTextColor(red, green, blue)
+	if classColor then
+		panel.title:SetTextColor(classColor.r, classColor.g, classColor.b)
+	else
+		panel.title:SetTextColor(red, green, blue)
+	end
 	panel.subtitle:SetText(subtitle or "UwU Logs")
 	UpdateInspectPanelSpecButtons(panel, player, selectedSpecIndex)
 	AddInspectPanelSection(state, "Summary")
@@ -4117,9 +4271,9 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 		local historicalRed, historicalGreen, historicalBlue = GetUwUScoreColor(historicalScore)
 		AddInspectPanelLine(state, coolstats.GetUwUHistoricalOverallLabel(), FormatUwUScoreWithRank(historicalScore, historicalRank), historicalRed, historicalGreen, historicalBlue)
 	end
-	AddInspectPanelLine(state, "Spec", specName, 1.0, 1.0, 1.0)
+	AddInspectPanelLine(state, "Spec", specName, classColor and classColor.r or 1.0, classColor and classColor.g or 1.0, classColor and classColor.b or 1.0)
 	if selectedSpecIndex ~= player[4] then
-		AddInspectPanelLine(state, "Best Spec", GetUwUSpecName(player) or "Unknown", 1.0, 1.0, 1.0)
+		AddInspectPanelLine(state, "Best Spec", GetUwUSpecName(player) or "Unknown", classColor and classColor.r or 1.0, classColor and classColor.g or 1.0, classColor and classColor.b or 1.0)
 	end
 
 	if currentPhaseRanked then
@@ -5805,6 +5959,16 @@ if type(coolstats) == "table" then
 		return bestRank, bestSpecIndex, bestScoreCenti
 	end
 
+	function coolstats.IsOnyxiaPhase3Browser()
+		local data = coolstatsUwUData
+		local realmKey = data and coolstats.NormalizeCachedPlayerRealmKey(data.realm)
+		if not realmKey or realmKey == "" then
+			realmKey = coolstats.GetCurrentRealmKey and coolstats.GetCurrentRealmKey()
+		end
+		local phaseId = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()
+		return realmKey == "onyxia" and phaseId == "toc"
+	end
+
 	function coolstats.GetCachedPlayerBrowserClassName(classIndex)
 		local data = coolstatsUwUData
 		if data and data.classes and data.classes[classIndex] then
@@ -6301,7 +6465,7 @@ if type(coolstats) == "table" then
 			if self.bestRankSpecName then
 				rankText = rankText .. " " .. self.bestRankSpecName
 			end
-			GameTooltip:AddDoubleLine("Phase 3 Best Rank", rankText, 0.86, 0.86, 0.78, 1, 0.82, 0.16)
+			GameTooltip:AddDoubleLine(self.currentRankLabel or "Best Rank", rankText, 0.86, 0.86, 0.78, 1, 0.82, 0.16)
 		end
 		if self.phase2Text and self.phase2Text ~= "-" then
 			GameTooltip:AddDoubleLine("Phase 2 Overall", self.phase2Text, 0.86, 0.86, 0.78, self.phase2R or 1, self.phase2G or 1, self.phase2B or 1)
@@ -6310,6 +6474,7 @@ if type(coolstats) == "table" then
 			GameTooltip:AddDoubleLine("Gear Cached", self.cacheText, 0.86, 0.86, 0.78, 1, 1, 1)
 		end
 		GameTooltip:AddLine("Left-click to open the standard UwU lookup.", 0.62, 0.62, 0.58, true)
+		GameTooltip:AddLine("Shift-click to link this player's logs in chat.", 0.62, 0.72, 0.86, true)
 		GameTooltip:AddLine("Right-click for actions, including armory and talents.", 0.62, 0.62, 0.58, true)
 		GameTooltip:Show()
 	end
@@ -6629,6 +6794,17 @@ if type(coolstats) == "table" then
 		end
 		UIDropDownMenu_AddButton(info, level)
 
+		info = UIDropDownMenu_CreateInfo()
+		info.text = "Link UwU Logs"
+		info.notCheckable = 1
+		info.func = function()
+			if CloseDropDownMenus then
+				CloseDropDownMenus()
+			end
+			coolstats.InsertPlayerLogLink(name)
+		end
+		UIDropDownMenu_AddButton(info, level)
+
 		local analysisAllowed, analysisReason = coolstats.CanOpenLogAnalysisWithName(name)
 		info = UIDropDownMenu_CreateInfo()
 		info.text = "Log Analysis"
@@ -6687,6 +6863,10 @@ if type(coolstats) == "table" then
 		coolstats.TouchManagedWindow(coolstats.cachedPlayerBrowser)
 		if button == "RightButton" then
 			coolstats.OpenCachedPlayerBrowserRowMenu(self)
+			return
+		end
+		if IsModifiedClick and IsModifiedClick("CHATLINK") then
+			coolstats.InsertPlayerLogLink(self.playerName)
 			return
 		end
 		coolstats.OpenCachedPlayerBrowserPlayer(self.playerName)
@@ -7087,6 +7267,7 @@ if type(coolstats) == "table" then
 
 	function coolstats.CreateCachedPlayerBrowserRow(panel, index)
 		local row = CreateFrame("Button", "coolstatsCachedPlayerBrowserRow" .. tostring(index), panel)
+		local showPhase2History = panel and panel.showPhase2History
 		SetFrameSize(row, 860, 18)
 		row:SetPoint("TOPLEFT", panel.listTop, "BOTTOMLEFT", 0, -((index - 1) * 18))
 		row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -7188,11 +7369,14 @@ if type(coolstats) == "table" then
 		phase2Text:SetPoint("LEFT", row, "LEFT", 638, 0)
 		phase2Text:SetWidth(106)
 		phase2Text:SetJustifyH("RIGHT")
+		if not showPhase2History then
+			phase2Text:Hide()
+		end
 		row.phase2TextFrame = phase2Text
 
 		local cacheText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		cacheText:SetPoint("LEFT", row, "LEFT", 754, 0)
-		cacheText:SetWidth(88)
+		cacheText:SetPoint("LEFT", row, "LEFT", showPhase2History and 754 or 638, 0)
+		cacheText:SetWidth(showPhase2History and 88 or 104)
 		cacheText:SetJustifyH("RIGHT")
 		row.cacheTextFrame = cacheText
 
@@ -7206,6 +7390,7 @@ if type(coolstats) == "table" then
 
 		local panel = CreateFrame("Frame", "coolstatsCachedPlayerBrowser", UIParent)
 		coolstats.cachedPlayerBrowser = panel
+		panel.showPhase2History = coolstats.IsOnyxiaPhase3Browser()
 		SetFrameSize(panel, 940, 512)
 		panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 		panel:SetFrameStrata("DIALOG")
@@ -7358,10 +7543,13 @@ if type(coolstats) == "table" then
 		header.logsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Logs", 370, 32, "CENTER", "logs")
 		header.gearText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear", 405, 32, "CENTER", "gear")
 		header.talentsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Talents", 440, 44, "CENTER", "talents")
-		header.scoreText = coolstats.CreateCachedPlayerBrowserColumn(header, "P3 Parse", 494, 60, "RIGHT", "parses")
-		header.rankText = coolstats.CreateCachedPlayerBrowserColumn(header, "P3 Rank", 562, 66, "RIGHT", "rank")
+		header.scoreText = coolstats.CreateCachedPlayerBrowserColumn(header, panel.showPhase2History and "P3 Parse" or "Parses", 494, 60, "RIGHT", "parses")
+		header.rankText = coolstats.CreateCachedPlayerBrowserColumn(header, panel.showPhase2History and "P3 Rank" or "Best Rank", 562, 66, "RIGHT", "rank")
 		header.phase2Text = coolstats.CreateCachedPlayerBrowserColumn(header, "P2 Overall", 638, 106, "RIGHT", "phase2")
-		header.cacheText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear Cached", 754, 88, "RIGHT", "cache")
+		if not panel.showPhase2History then
+			header.phase2Text:Hide()
+		end
+		header.cacheText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear Cached", panel.showPhase2History and 754 or 638, panel.showPhase2History and 88 or 104, "RIGHT", "cache")
 		header.columns[1] = header.nameText
 		header.columns[2] = header.mainSpecText
 		header.columns[3] = header.offSpecText
@@ -7370,8 +7558,12 @@ if type(coolstats) == "table" then
 		header.columns[6] = header.talentsText
 		header.columns[7] = header.scoreText
 		header.columns[8] = header.rankText
-		header.columns[9] = header.phase2Text
-		header.columns[10] = header.cacheText
+		if panel.showPhase2History then
+			header.columns[9] = header.phase2Text
+			header.columns[10] = header.cacheText
+		else
+			header.columns[9] = header.cacheText
+		end
 		panel.header = header
 		panel.listTop = header
 
@@ -7401,7 +7593,11 @@ if type(coolstats) == "table" then
 		end
 		local rows = panel.browserRows or {}
 		local counts = panel.browserCounts or { total = 0, logs = 0, current = 0, phase2 = 0, gear = 0, talents = 0, both = 0 }
-		panel.subtitle:SetText(string.format("%d shown   P3 Ranked %d   P2 History %d   Gear %d   Talents %d   Both %d", counts.total or 0, counts.current or 0, counts.phase2 or 0, counts.gear or 0, counts.talents or 0, counts.both or 0))
+		if panel.showPhase2History then
+			panel.subtitle:SetText(string.format("%d shown   P3 Ranked %d   P2 History %d   Gear %d   Talents %d   Both %d", counts.total or 0, counts.current or 0, counts.phase2 or 0, counts.gear or 0, counts.talents or 0, counts.both or 0))
+		else
+			panel.subtitle:SetText(string.format("%d shown   Logs %d   Gear %d   Talents %d   Both %d", counts.total or 0, counts.logs or 0, counts.gear or 0, counts.talents or 0, counts.both or 0))
+		end
 		if panel.generatedText then
 			panel.generatedText:SetText(coolstats.FormatCachedPlayerBrowserGeneratedAt())
 		end
@@ -7432,7 +7628,8 @@ if type(coolstats) == "table" then
 				rowFrame.className = coolstats.GetCachedPlayerBrowserClassName(row.classIndex)
 				rowFrame.bestRankText = row.bestRank and ("#" .. tostring(row.bestRank)) or "-"
 				rowFrame.bestRankSpecName = row.bestSpecName
-				rowFrame.phase2Text = row.phase2ScoreCenti and FormatUwUScoreWithRank(row.phase2ScoreCenti, row.phase2Rank) or "-"
+				rowFrame.currentRankLabel = panel.showPhase2History and "Phase 3 Best Rank" or "Best Rank"
+				rowFrame.phase2Text = panel.showPhase2History and row.phase2ScoreCenti and FormatUwUScoreWithRank(row.phase2ScoreCenti, row.phase2Rank) or "-"
 				rowFrame.mainSpecText = row.mainSpecName and (row.mainSpecName .. " " .. FormatUwUScore(row.mainSpecScoreCenti)) or "-"
 				rowFrame.offSpecText = row.offSpecName and (row.offSpecName .. " " .. FormatUwUScore(row.offSpecScoreCenti)) or "-"
 				rowFrame.nameText:SetText(row.name or row.key or "Unknown")
@@ -7506,8 +7703,9 @@ if type(coolstats) == "table" then
 				end
 				rowFrame.bestRankTextFrame:SetText(rowFrame.bestRankText)
 				rowFrame.bestRankTextFrame:SetTextColor(rankRed, rankGreen, rankBlue)
-				if row.phase2ScoreCenti then
+				if panel.showPhase2History and row.phase2ScoreCenti then
 					local phase2Red, phase2Green, phase2Blue = GetUwUScoreColor(row.phase2ScoreCenti)
+					rowFrame.phase2TextFrame:Show()
 					rowFrame.phase2TextFrame:SetText(rowFrame.phase2Text)
 					rowFrame.phase2TextFrame:SetTextColor(phase2Red, phase2Green, phase2Blue)
 					rowFrame.phase2R, rowFrame.phase2G, rowFrame.phase2B = phase2Red, phase2Green, phase2Blue
@@ -7515,6 +7713,9 @@ if type(coolstats) == "table" then
 					rowFrame.phase2TextFrame:SetText("-")
 					rowFrame.phase2TextFrame:SetTextColor(0.62, 0.62, 0.58)
 					rowFrame.phase2R, rowFrame.phase2G, rowFrame.phase2B = 0.62, 0.62, 0.58
+					if not panel.showPhase2History then
+						rowFrame.phase2TextFrame:Hide()
+					end
 				end
 				rowFrame.cacheTextFrame:SetText(rowFrame.cacheText)
 				rowFrame.cacheTextFrame:SetTextColor(row.hasGear and 1 or 0.62, row.hasGear and 1 or 0.62, row.hasGear and 1 or 0.58)
@@ -7529,6 +7730,7 @@ if type(coolstats) == "table" then
 				rowFrame.className = nil
 				rowFrame.bestRankText = nil
 				rowFrame.bestRankSpecName = nil
+				rowFrame.currentRankLabel = nil
 				rowFrame.phase2Text = nil
 				rowFrame.mainSpecText = nil
 				rowFrame.offSpecText = nil
@@ -7753,3 +7955,5 @@ end)
 
 GameTooltip:HookScript("OnTooltipSetUnit", AddTooltipLines)
 coolstats.HookAchievementComparisonUI()
+coolstats.InstallPlayerLogLinkHandler()
+coolstats.InstallPlayerLogChatFilters()

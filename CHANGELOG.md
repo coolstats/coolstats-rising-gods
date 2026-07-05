@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.22 - 2026-07-05
+
+### Onyxia logs
+
+- Refreshed Onyxia's Phase 3 rankings and all five TOGC 25H boss leaderboards plus Koralon.
+- Retained Phase 2 overall rankings and Algalon as historical indicators.
+- Preserve retained Algalon parses when a player's current TOGC best specialization differs from their historical Ulduar specialization.
+- Disabled TOGC achievement/statistics fallback because Warmane cross-credits some 10H progress into the 25H client data.
+- Show one honest TOGC logs row, including an empty `0/5` row when no verified TOGC logs exist.
+
+### Log links
+
+- Added compact `[coolstats: Player]` chat tokens from browser rows, browser actions, and UwU Logs panel titles.
+- Convert received tokens into clickable UwU Logs links for players running version 0.2.22 or later.
+- Keep shared tokens short and readable for players without a compatible coolstats version.
+
+### Interface and stability
+
+- Made Phase 3 and Phase 2 browser labels specific to Onyxia's TOGC phase.
+- Fixed achievement comparison cleanup so closing Blizzard's comparison UI no longer leaves tooltips permanently stuck on "Achievement UI busy" or reuses stale player statistics.
+- Colored player/specialization titles and specialization rows in UwU Logs panels with the player's class color.
+
 ## 0.2.21 - 2026-07-05
 
 ### Onyxia Phase 3
