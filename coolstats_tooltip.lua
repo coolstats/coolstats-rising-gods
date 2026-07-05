@@ -5,7 +5,7 @@ local ADDON_COLOR_G = 0.82
 local ADDON_COLOR_B = 0.0
 
 -- The stock client has no reliable API for custom progression phase detection.
-local CURRENT_UWU_PHASE_ID = "ulduar"
+local CURRENT_UWU_PHASE_ID = "toc"
 local CURRENT_RAID_ID = CURRENT_UWU_PHASE_ID
 local SECONDS_PER_DAY = 86400
 local RAID_PROGRESS_CACHE_SECONDS = 300
@@ -2611,6 +2611,25 @@ local function GetUwUBossRaidName(bossName)
 	return UWU_BOSS_RAID_OVERRIDES[bossName] or (data and data.defaultRaidName) or "Ulduar"
 end
 
+-- Keep these helpers on the addon table: this chunk is at the Lua 5.1
+-- compiler's 200-local limit on the 3.3.5 client.
+function coolstats.IsUwUPlayerRankedForCurrentPhase(player)
+	return player and player[11] ~= false
+end
+
+function coolstats.GetUwUHistoricalOverall(player)
+	local historical = player and player[10]
+	if type(historical) ~= "table" or historical[1] == nil then
+		return nil, nil
+	end
+	return historical[1], historical[2]
+end
+
+function coolstats.GetUwUHistoricalOverallLabel()
+	local data = coolstatsUwUData
+	return (data and data.historicalOverallLabel) or "Phase 2 Overall"
+end
+
 function coolstats.FormatRaidProgressText(progress)
 	local milestoneText = progress and progress.milestoneComplete and "|cff20ff20" or "|cffff3030"
 	milestoneText = milestoneText .. tostring(progress and progress.milestoneLabel or "") .. "|r"
@@ -2981,25 +3000,43 @@ local function BuildUwUTooltipCache(player)
 	local scoreCenti = player[2]
 	local specName = GetUwUSpecName(player)
 	local rank = player[5]
-	local value = FormatUwUScore(scoreCenti)
-	if specName then
-		value = value .. " " .. specName
-	end
-	if rank then
-		value = value .. " #" .. tostring(rank)
+	local currentPhaseRanked = coolstats.IsUwUPlayerRankedForCurrentPhase(player)
+	local value = "Not ranked"
+	if currentPhaseRanked then
+		value = FormatUwUScore(scoreCenti)
+		if specName then
+			value = value .. " " .. specName
+		end
+		if rank then
+			value = value .. " #" .. tostring(rank)
+		end
 	end
 
-	local red, green, blue = GetUwUScoreColor(scoreCenti)
+	local red, green, blue = 0.45, 0.45, 0.45
+	if currentPhaseRanked then
+		red, green, blue = GetUwUScoreColor(scoreCenti)
+	end
 	local cache = {
 		player = player,
 		base = { "double", "UwU Logs Raid Score", value, ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B, red, green, blue },
 		details = {},
 	}
+	local historicalScore, historicalRank = coolstats.GetUwUHistoricalOverall(player)
+	if historicalScore then
+		local historicalRed, historicalGreen, historicalBlue = GetUwUScoreColor(historicalScore)
+		cache.historical = {
+			"double",
+			coolstats.GetUwUHistoricalOverallLabel(),
+			FormatUwUScoreWithRank(historicalScore, historicalRank),
+			0.70, 0.70, 0.70,
+			historicalRed, historicalGreen, historicalBlue,
+		}
+	end
 
 	local data = coolstatsUwUData
 	local classSpecs = data and data.specs and data.specs[player[3]]
 	local specScores = player[6]
-	if classSpecs and specScores then
+	if currentPhaseRanked and classSpecs and specScores then
 		cache.details[#cache.details + 1] = { "line", "UwU Specs", ADDON_COLOR_R, ADDON_COLOR_G, ADDON_COLOR_B }
 		local specRanks = player[7]
 		for specIndex = 1, 3 do
@@ -3073,6 +3110,7 @@ local function AddUwULogsLines(unit)
 	local cache = GetUwUTooltipCache(player)
 	if options.logsSummary ~= false then
 		AddCachedUwUTooltipLine(cache.base)
+		AddCachedUwUTooltipLine(cache.historical)
 	end
 
 	if options.logsBossDetails ~= false and IsAltKeyDown and IsAltKeyDown() then
@@ -4017,11 +4055,9 @@ local function CreateLookupUwUPanel()
 end
 
 function coolstats.ResizeUwUPanelForRows(panel, state)
-	local phaseId = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()
-	local minimumHeight = phaseId == "toc" and 620 or UWU_INSPECT_PANEL_HEIGHT
 	local visibleRows = math.max(0, ((state and state.index) or 1) - 1)
 	local requiredHeight = 68 + (visibleRows * UWU_INSPECT_ROW_HEIGHT)
-	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, math.max(minimumHeight, requiredHeight))
+	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, math.max(UWU_INSPECT_PANEL_HEIGHT, requiredHeight))
 end
 
 RenderUwUPanel = function(panel, name, player, subtitle)
@@ -4038,8 +4074,7 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	panel.renderName = name
 	panel.renderPlayer = player
 	panel.renderSubtitle = subtitle
-	local phaseId = coolstats.GetActiveUwUPhaseId and coolstats.GetActiveUwUPhaseId()
-	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, phaseId == "toc" and 620 or UWU_INSPECT_PANEL_HEIGHT)
+	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, UWU_INSPECT_PANEL_HEIGHT)
 	UpdateCachedGearPanel(panel, name, player)
 	for index = 1, #panel.rows do
 		panel.rows[index]:Hide()
@@ -4060,11 +4095,15 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	local state = { rows = panel.rows, index = 1, stripeIndex = 1, panel = panel }
 	local selectedSpecIndex = GetInspectPanelSelectedSpecIndex(panel, player)
 	local scoreCenti = GetUwUSpecScoreCenti(player, selectedSpecIndex) or player[2]
-	local red, green, blue = GetUwUScoreColor(scoreCenti)
+	local currentPhaseRanked = coolstats.IsUwUPlayerRankedForCurrentPhase(player)
+	local red, green, blue = 0.45, 0.45, 0.45
+	if currentPhaseRanked then
+		red, green, blue = GetUwUScoreColor(scoreCenti)
+	end
 	local specName = GetUwUSpecName(player, selectedSpecIndex) or "Unknown"
 	local rank = GetUwUSpecRank(player, selectedSpecIndex)
 	local titleText = (player[1] or name or "Unknown") .. " - " .. specName
-	if rank then
+	if currentPhaseRanked and rank then
 		titleText = titleText .. " #" .. tostring(rank)
 	end
 	panel.title:SetText(titleText)
@@ -4072,17 +4111,24 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	panel.subtitle:SetText(subtitle or "UwU Logs")
 	UpdateInspectPanelSpecButtons(panel, player, selectedSpecIndex)
 	AddInspectPanelSection(state, "Summary")
-	AddInspectPanelLine(state, "Raid Score", FormatUwUScoreWithRank(scoreCenti, rank), red, green, blue)
+	AddInspectPanelLine(state, "Raid Score", currentPhaseRanked and FormatUwUScoreWithRank(scoreCenti, rank) or "Not ranked", red, green, blue)
+	local historicalScore, historicalRank = coolstats.GetUwUHistoricalOverall(player)
+	if historicalScore then
+		local historicalRed, historicalGreen, historicalBlue = GetUwUScoreColor(historicalScore)
+		AddInspectPanelLine(state, coolstats.GetUwUHistoricalOverallLabel(), FormatUwUScoreWithRank(historicalScore, historicalRank), historicalRed, historicalGreen, historicalBlue)
+	end
 	AddInspectPanelLine(state, "Spec", specName, 1.0, 1.0, 1.0)
 	if selectedSpecIndex ~= player[4] then
 		AddInspectPanelLine(state, "Best Spec", GetUwUSpecName(player) or "Unknown", 1.0, 1.0, 1.0)
 	end
 
-	AddInspectPanelSection(state, "Specs")
+	if currentPhaseRanked then
+		AddInspectPanelSection(state, "Specs")
+	end
 	local classSpecs = coolstatsUwUData and coolstatsUwUData.specs and coolstatsUwUData.specs[player[3]]
 	local specScores = player[6]
 	local specRanks = player[7]
-	if classSpecs and specScores then
+	if currentPhaseRanked and classSpecs and specScores then
 		for specIndex = 1, 3 do
 			local specScore = specScores[specIndex]
 			if specScore and classSpecs[specIndex] then
@@ -6036,6 +6082,8 @@ if type(coolstats) == "table" then
 			return tonumber(row.scoreCenti) or -1
 		elseif sortKey == "rank" then
 			return tonumber(row.bestRank) or 9999999
+		elseif sortKey == "phase2" then
+			return tonumber(row.phase2ScoreCenti) or -1
 		elseif sortKey == "cache" then
 			return tonumber(row.seenAt) or 0
 		end
@@ -6070,6 +6118,9 @@ if type(coolstats) == "table" then
 			elseif sortKey == "rank" then
 				leftMissing = not left.bestRank
 				rightMissing = not right.bestRank
+			elseif sortKey == "phase2" then
+				leftMissing = not left.phase2ScoreCenti
+				rightMissing = not right.phase2ScoreCenti
 			elseif sortKey == "cache" then
 				leftMissing = not left.seenAt
 				rightMissing = not right.seenAt
@@ -6102,7 +6153,7 @@ if type(coolstats) == "table" then
 		end
 		local rowsByKey = {}
 		local rows = {}
-		local counts = { logs = 0, gear = 0, talents = 0, both = 0 }
+		local counts = { logs = 0, current = 0, phase2 = 0, gear = 0, talents = 0, both = 0 }
 
 		local function GetRow(key, name)
 			key = key or NormalizeName(name or "")
@@ -6127,27 +6178,31 @@ if type(coolstats) == "table" then
 					row.player = player
 					row.hasLogs = true
 					row.name = player[1] or row.name
-					row.scoreCenti = player[2]
-					row.rank = player[5]
 					row.classIndex = player[3]
 					row.specIndex = player[4]
 					row.specName = GetUwUSpecName(player)
 					row.specScores = player[6]
-					local specChoices = BuildUwUSpecChoices(player)
-					local mainSpec = specChoices[1]
-					local offSpec = specChoices[2]
-					if mainSpec then
-						row.mainSpecIndex = mainSpec.specIndex
-						row.mainSpecName = mainSpec.name
-						row.mainSpecScoreCenti = mainSpec.scoreCenti
+					row.currentPhaseRanked = coolstats.IsUwUPlayerRankedForCurrentPhase(player)
+					if row.currentPhaseRanked then
+						row.scoreCenti = player[2]
+						row.rank = player[5]
+						local specChoices = BuildUwUSpecChoices(player)
+						local mainSpec = specChoices[1]
+						local offSpec = specChoices[2]
+						if mainSpec then
+							row.mainSpecIndex = mainSpec.specIndex
+							row.mainSpecName = mainSpec.name
+							row.mainSpecScoreCenti = mainSpec.scoreCenti
+						end
+						if offSpec then
+							row.offSpecIndex = offSpec.specIndex
+							row.offSpecName = offSpec.name
+							row.offSpecScoreCenti = offSpec.scoreCenti
+						end
+						row.bestRank, row.bestRankSpecIndex, row.bestRankScoreCenti = coolstats.GetCachedPlayerBrowserBestRank(player)
+						row.bestSpecName = GetUwUSpecName(player, row.bestRankSpecIndex)
 					end
-					if offSpec then
-						row.offSpecIndex = offSpec.specIndex
-						row.offSpecName = offSpec.name
-						row.offSpecScoreCenti = offSpec.scoreCenti
-					end
-					row.bestRank, row.bestRankSpecIndex, row.bestRankScoreCenti = coolstats.GetCachedPlayerBrowserBestRank(player)
-					row.bestSpecName = GetUwUSpecName(player, row.bestRankSpecIndex)
+					row.phase2ScoreCenti, row.phase2Rank = coolstats.GetUwUHistoricalOverall(player)
 				end
 			end
 		end
@@ -6188,6 +6243,12 @@ if type(coolstats) == "table" then
 				rows[#rows + 1] = row
 				if row.hasLogs then
 					counts.logs = counts.logs + 1
+				end
+				if row.currentPhaseRanked then
+					counts.current = counts.current + 1
+				end
+				if row.phase2ScoreCenti then
+					counts.phase2 = counts.phase2 + 1
 				end
 				if row.hasGear then
 					counts.gear = counts.gear + 1
@@ -6240,7 +6301,10 @@ if type(coolstats) == "table" then
 			if self.bestRankSpecName then
 				rankText = rankText .. " " .. self.bestRankSpecName
 			end
-			GameTooltip:AddDoubleLine("Best Rank", rankText, 0.86, 0.86, 0.78, 1, 0.82, 0.16)
+			GameTooltip:AddDoubleLine("Phase 3 Best Rank", rankText, 0.86, 0.86, 0.78, 1, 0.82, 0.16)
+		end
+		if self.phase2Text and self.phase2Text ~= "-" then
+			GameTooltip:AddDoubleLine("Phase 2 Overall", self.phase2Text, 0.86, 0.86, 0.78, self.phase2R or 1, self.phase2G or 1, self.phase2B or 1)
 		end
 		if self.cacheText and self.cacheText ~= "-" then
 			GameTooltip:AddDoubleLine("Gear Cached", self.cacheText, 0.86, 0.86, 0.78, 1, 1, 1)
@@ -7074,55 +7138,61 @@ if type(coolstats) == "table" then
 
 		local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		nameText:SetPoint("LEFT", row, "LEFT", 40, 0)
-		nameText:SetWidth(160)
+		nameText:SetWidth(145)
 		nameText:SetJustifyH("LEFT")
 		row.nameText = nameText
 
 		local mainSpecText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		mainSpecText:SetPoint("LEFT", row, "LEFT", 210, 0)
-		mainSpecText:SetWidth(90)
+		mainSpecText:SetPoint("LEFT", row, "LEFT", 190, 0)
+		mainSpecText:SetWidth(84)
 		mainSpecText:SetJustifyH("CENTER")
 		row.mainSpecTextFrame = mainSpecText
 
 		local offSpecText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		offSpecText:SetPoint("LEFT", row, "LEFT", 306, 0)
-		offSpecText:SetWidth(90)
+		offSpecText:SetPoint("LEFT", row, "LEFT", 280, 0)
+		offSpecText:SetWidth(84)
 		offSpecText:SetJustifyH("CENTER")
 		row.offSpecTextFrame = offSpecText
 
 		local logsText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		logsText:SetPoint("LEFT", row, "LEFT", 408, 0)
-		logsText:SetWidth(38)
+		logsText:SetPoint("LEFT", row, "LEFT", 370, 0)
+		logsText:SetWidth(32)
 		logsText:SetJustifyH("CENTER")
 		row.logsText = logsText
 
 		local gearText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		gearText:SetPoint("LEFT", row, "LEFT", 450, 0)
-		gearText:SetWidth(38)
+		gearText:SetPoint("LEFT", row, "LEFT", 405, 0)
+		gearText:SetWidth(32)
 		gearText:SetJustifyH("CENTER")
 		row.gearText = gearText
 
 		local talentsText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		talentsText:SetPoint("LEFT", row, "LEFT", 492, 0)
-		talentsText:SetWidth(50)
+		talentsText:SetPoint("LEFT", row, "LEFT", 440, 0)
+		talentsText:SetWidth(44)
 		talentsText:SetJustifyH("CENTER")
 		row.talentsText = talentsText
 
 		local scoreText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		scoreText:SetPoint("LEFT", row, "LEFT", 556, 0)
-		scoreText:SetWidth(62)
+		scoreText:SetPoint("LEFT", row, "LEFT", 494, 0)
+		scoreText:SetWidth(60)
 		scoreText:SetJustifyH("RIGHT")
 		row.scoreText = scoreText
 
 		local bestRankText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		bestRankText:SetPoint("LEFT", row, "LEFT", 634, 0)
-		bestRankText:SetWidth(82)
+		bestRankText:SetPoint("LEFT", row, "LEFT", 562, 0)
+		bestRankText:SetWidth(66)
 		bestRankText:SetJustifyH("RIGHT")
 		row.bestRankTextFrame = bestRankText
 
+		local phase2Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		phase2Text:SetPoint("LEFT", row, "LEFT", 638, 0)
+		phase2Text:SetWidth(106)
+		phase2Text:SetJustifyH("RIGHT")
+		row.phase2TextFrame = phase2Text
+
 		local cacheText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		cacheText:SetPoint("LEFT", row, "LEFT", 738, 0)
-		cacheText:SetWidth(104)
+		cacheText:SetPoint("LEFT", row, "LEFT", 754, 0)
+		cacheText:SetWidth(88)
 		cacheText:SetJustifyH("RIGHT")
 		row.cacheTextFrame = cacheText
 
@@ -7192,14 +7262,14 @@ if type(coolstats) == "table" then
 
 		local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		subtitle:SetPoint("TOP", title, "BOTTOM", 0, -4)
-		subtitle:SetWidth(760)
+		subtitle:SetWidth(860)
 		subtitle:SetJustifyH("CENTER")
 		subtitle:SetTextColor(0.78, 0.78, 0.72)
 		panel.subtitle = subtitle
 
 		local generated = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		generated:SetPoint("TOP", subtitle, "BOTTOM", 0, -2)
-		generated:SetWidth(760)
+		generated:SetWidth(860)
 		generated:SetJustifyH("CENTER")
 		generated:SetTextColor(0.58, 0.76, 0.86)
 		generated:SetText(coolstats.FormatCachedPlayerBrowserGeneratedAt())
@@ -7282,15 +7352,16 @@ if type(coolstats) == "table" then
 		header:SetPoint("TOPLEFT", panel, "TOPLEFT", 46, -124)
 		header.columns = {}
 		coolstats.ApplyCachedPlayerBrowserHeaderBackground(header)
-		header.nameText = coolstats.CreateCachedPlayerBrowserColumn(header, "Name", 40, 160, "LEFT", "name")
-		header.mainSpecText = coolstats.CreateCachedPlayerBrowserColumn(header, "Main Spec", 210, 90, "CENTER", "main")
-		header.offSpecText = coolstats.CreateCachedPlayerBrowserColumn(header, "Off Spec", 306, 90, "CENTER", "off")
-		header.logsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Logs", 408, 38, "CENTER", "logs")
-		header.gearText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear", 450, 38, "CENTER", "gear")
-		header.talentsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Talents", 492, 50, "CENTER", "talents")
-		header.scoreText = coolstats.CreateCachedPlayerBrowserColumn(header, "Parses", 556, 62, "RIGHT", "parses")
-		header.rankText = coolstats.CreateCachedPlayerBrowserColumn(header, "Best Rank", 634, 82, "RIGHT", "rank")
-		header.cacheText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear Cached", 738, 104, "RIGHT", "cache")
+		header.nameText = coolstats.CreateCachedPlayerBrowserColumn(header, "Name", 40, 145, "LEFT", "name")
+		header.mainSpecText = coolstats.CreateCachedPlayerBrowserColumn(header, "Main Spec", 190, 84, "CENTER", "main")
+		header.offSpecText = coolstats.CreateCachedPlayerBrowserColumn(header, "Off Spec", 280, 84, "CENTER", "off")
+		header.logsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Logs", 370, 32, "CENTER", "logs")
+		header.gearText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear", 405, 32, "CENTER", "gear")
+		header.talentsText = coolstats.CreateCachedPlayerBrowserColumn(header, "Talents", 440, 44, "CENTER", "talents")
+		header.scoreText = coolstats.CreateCachedPlayerBrowserColumn(header, "P3 Parse", 494, 60, "RIGHT", "parses")
+		header.rankText = coolstats.CreateCachedPlayerBrowserColumn(header, "P3 Rank", 562, 66, "RIGHT", "rank")
+		header.phase2Text = coolstats.CreateCachedPlayerBrowserColumn(header, "P2 Overall", 638, 106, "RIGHT", "phase2")
+		header.cacheText = coolstats.CreateCachedPlayerBrowserColumn(header, "Gear Cached", 754, 88, "RIGHT", "cache")
 		header.columns[1] = header.nameText
 		header.columns[2] = header.mainSpecText
 		header.columns[3] = header.offSpecText
@@ -7299,7 +7370,8 @@ if type(coolstats) == "table" then
 		header.columns[6] = header.talentsText
 		header.columns[7] = header.scoreText
 		header.columns[8] = header.rankText
-		header.columns[9] = header.cacheText
+		header.columns[9] = header.phase2Text
+		header.columns[10] = header.cacheText
 		panel.header = header
 		panel.listTop = header
 
@@ -7328,8 +7400,8 @@ if type(coolstats) == "table" then
 			return
 		end
 		local rows = panel.browserRows or {}
-		local counts = panel.browserCounts or { total = 0, logs = 0, gear = 0, talents = 0, both = 0 }
-		panel.subtitle:SetText(string.format("%d shown   Logs %d   Gear %d   Talents %d   Both %d", counts.total or 0, counts.logs or 0, counts.gear or 0, counts.talents or 0, counts.both or 0))
+		local counts = panel.browserCounts or { total = 0, logs = 0, current = 0, phase2 = 0, gear = 0, talents = 0, both = 0 }
+		panel.subtitle:SetText(string.format("%d shown   P3 Ranked %d   P2 History %d   Gear %d   Talents %d   Both %d", counts.total or 0, counts.current or 0, counts.phase2 or 0, counts.gear or 0, counts.talents or 0, counts.both or 0))
 		if panel.generatedText then
 			panel.generatedText:SetText(coolstats.FormatCachedPlayerBrowserGeneratedAt())
 		end
@@ -7360,12 +7432,13 @@ if type(coolstats) == "table" then
 				rowFrame.className = coolstats.GetCachedPlayerBrowserClassName(row.classIndex)
 				rowFrame.bestRankText = row.bestRank and ("#" .. tostring(row.bestRank)) or "-"
 				rowFrame.bestRankSpecName = row.bestSpecName
+				rowFrame.phase2Text = row.phase2ScoreCenti and FormatUwUScoreWithRank(row.phase2ScoreCenti, row.phase2Rank) or "-"
 				rowFrame.mainSpecText = row.mainSpecName and (row.mainSpecName .. " " .. FormatUwUScore(row.mainSpecScoreCenti)) or "-"
 				rowFrame.offSpecText = row.offSpecName and (row.offSpecName .. " " .. FormatUwUScore(row.offSpecScoreCenti)) or "-"
 				rowFrame.nameText:SetText(row.name or row.key or "Unknown")
 				local classFile = row.classFile or UWU_CLASS_FILE_BY_INDEX[row.classIndex]
 				local classColor = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
-				local specIcon = row.player and GetUwUSpecIcon(row.player, row.mainSpecIndex or row.specIndex)
+				local specIcon = row.currentPhaseRanked and row.player and GetUwUSpecIcon(row.player, row.mainSpecIndex or row.specIndex)
 				if specIcon then
 					rowFrame.classIcon:SetTexture(specIcon)
 					rowFrame.classIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -7433,6 +7506,16 @@ if type(coolstats) == "table" then
 				end
 				rowFrame.bestRankTextFrame:SetText(rowFrame.bestRankText)
 				rowFrame.bestRankTextFrame:SetTextColor(rankRed, rankGreen, rankBlue)
+				if row.phase2ScoreCenti then
+					local phase2Red, phase2Green, phase2Blue = GetUwUScoreColor(row.phase2ScoreCenti)
+					rowFrame.phase2TextFrame:SetText(rowFrame.phase2Text)
+					rowFrame.phase2TextFrame:SetTextColor(phase2Red, phase2Green, phase2Blue)
+					rowFrame.phase2R, rowFrame.phase2G, rowFrame.phase2B = phase2Red, phase2Green, phase2Blue
+				else
+					rowFrame.phase2TextFrame:SetText("-")
+					rowFrame.phase2TextFrame:SetTextColor(0.62, 0.62, 0.58)
+					rowFrame.phase2R, rowFrame.phase2G, rowFrame.phase2B = 0.62, 0.62, 0.58
+				end
 				rowFrame.cacheTextFrame:SetText(rowFrame.cacheText)
 				rowFrame.cacheTextFrame:SetTextColor(row.hasGear and 1 or 0.62, row.hasGear and 1 or 0.62, row.hasGear and 1 or 0.58)
 				rowFrame:Show()
@@ -7446,6 +7529,7 @@ if type(coolstats) == "table" then
 				rowFrame.className = nil
 				rowFrame.bestRankText = nil
 				rowFrame.bestRankSpecName = nil
+				rowFrame.phase2Text = nil
 				rowFrame.mainSpecText = nil
 				rowFrame.offSpecText = nil
 				if rowFrame.talentsText then

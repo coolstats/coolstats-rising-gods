@@ -2,13 +2,13 @@
 ## Title: |cff00c0ffcoolstats|r Data - Onyxia
 ## Notes: Realm-specific UwU Logs data for Onyxia.
 ## Author: coolstats
-## Version: 0.2.20
+## Version: 0.2.21
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats
 ## X-coolstats-Realm: Onyxia
-## X-coolstats-Phase: ulduar
+## X-coolstats-Phase: toc
 
-data\logs\ulduar\coolstats_uwu_data.lua
-data\logs\ulduar\coolstats_uwu_data_01.lua
-data\logs\ulduar\coolstats_uwu_data_02.lua
+data\logs\toc\coolstats_uwu_data.lua
+data\logs\toc\coolstats_uwu_data_01.lua
+data\logs\toc\coolstats_uwu_data_02.lua

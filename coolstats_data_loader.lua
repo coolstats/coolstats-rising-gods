@@ -9,7 +9,7 @@ local REALM_DATA_ADDONS = {
 }
 
 local REALM_PHASE_IDS = {
-	onyxia = "ulduar",
+	onyxia = "toc",
 	icecrown = "icc",
 	lordaeron = "icc",
 }

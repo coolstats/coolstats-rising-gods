@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Icecrown
 ## Notes: Realm-specific UwU Logs data for Icecrown.
 ## Author: coolstats
-## Version: 0.2.20
+## Version: 0.2.21
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats
