@@ -3,15 +3,11 @@ local ADDON_NAME = ...
 coolstats = coolstats or {}
 
 local REALM_DATA_ADDONS = {
-	onyxia = "coolstats_Data_Onyxia",
-	icecrown = "coolstats_Data_Icecrown",
-	lordaeron = "coolstats_Data_Lordaeron",
+	risinggods = "coolstats_Data_RisingGods",
 }
 
 local REALM_PHASE_IDS = {
-	onyxia = "toc",
-	icecrown = "icc",
-	lordaeron = "icc",
+	risinggods = "icc",
 }
 
 local function NormalizeRealmName(realm)

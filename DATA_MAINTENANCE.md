@@ -1,42 +1,48 @@
-# Realm Data Maintenance
+# Rising Gods Data Maintenance
 
-The in-game addon never makes web requests. Realm datasets are generated
-outside the game and bundled into releases.
+UwU Logs data is generated outside the game and bundled as the load-on-demand
+addon `coolstats_Data_RisingGods`.
 
-## Realm Profiles
+## Canonical identifiers
 
-- **Onyxia:** Trial of the Grand Crusader 25 heroic and Koralon, with the
-  previous phase's Algalon parse and Phase 2 overall score/rank retained.
-- **Icecrown:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
-- **Lordaeron:** Icecrown Citadel, Toravon, Halion, and Anub'arak.
+- UwU Logs server: `Rising-Gods`
+- normalized realm key: `risinggods`
+- active phase: `icc`
+- data addon: `coolstats_Data_RisingGods`
+- JSON/cache slug: `rising_gods`
 
-Onyxia, Icecrown, and Lordaeron data is generated as separate load-on-demand addons.
-Only the dataset matching the player's current realm is loaded in-game.
-Onyxia's deprecated Ulduar boss rows are not shipped in the current dataset;
-only Algalon remains as a historical boss indicator. Onyxia's Lair is excluded
-until it is present in the official player logs.
+`Rising-Gods`, `Rising Gods`, and `RisingGods` normalize to the same client key.
 
-## Dataset Updates
+## Safety rules
 
-Realm datasets are curated outside the public addon repository and shipped as
-generated Lua data in tagged releases.
+1. Run `tools/update_rising_gods.ps1 -Mode Validate` before a full refresh.
+2. A weekly refresh must abort on any ranking request failure.
+3. A weekly refresh must abort if the active player count is unexpectedly small.
+4. A full boss refresh must abort if a configured encounter returns no rows.
+5. Boss records remain separated by specialization.
+6. Boss leaderboards may enrich ranked players, but must not create rankless boss-only records.
+7. Generated Lua is committed; raw JSON and cache files remain local and ignored.
+8. The release archive must contain only the core, cache, and Rising Gods data addons.
+9. Never point these scripts at the Warmane repository or its release directory.
+10. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
 
-Weekly releases refresh the top 400 players per class/spec and all configured
-boss leaderboards for Onyxia, Icecrown, and Lordaeron.
+## Commands
 
-Generated load-on-demand addons are written to:
-
-```text
-coolstats/realm_data/coolstats_Data_Icecrown/
-coolstats/realm_data/coolstats_Data_Lordaeron/
-coolstats/realm_data/coolstats_Data_Onyxia/
+```powershell
+.\tools\update_rising_gods.ps1 -Mode Validate
+.\tools\update_rising_gods.ps1 -Mode Weekly
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.23-rg2
 ```
 
-The private data pipeline refuses to overwrite output when:
+Generated runtime data:
 
-- A weekly class/spec rankings request fails.
-- The fresh active-player count is below the minimum.
-- An entire configured boss leaderboard produces no rows.
+```text
+realm_data/coolstats_Data_RisingGods/data/logs/icc/
+```
 
-The release packaging script lifts realm data addons out of `realm_data` and
-places them beside the core `coolstats` addon inside the install-ready ZIP.
+Local ignored maintenance data:
+
+```text
+data/uwu_logs_rising_gods.json
+data/uwu_character_boss_cache_rising_gods.json
+```

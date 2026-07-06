@@ -6660,9 +6660,7 @@ if type(coolstats) == "table" then
 		local realm = GetRealmName and GetRealmName() or ""
 		local realmKey = string.lower(string.gsub(tostring(realm), "[^%a%d]", ""))
 		local supportedRealms = {
-			icecrown = "Icecrown",
-			lordaeron = "Lordaeron",
-			onyxia = "Onyxia",
+			risinggods = "Rising-Gods",
 		}
 		return supportedRealms[realmKey] or realm
 	end
@@ -6674,6 +6672,10 @@ if type(coolstats) == "table" then
 	end
 
 	function coolstats.GetCachedPlayerBrowserWarmaneArmoryUrl(name)
+		local realmKey = coolstats.GetCurrentRealmKey and coolstats.GetCurrentRealmKey()
+		if realmKey == "risinggods" then
+			return nil
+		end
 		name = string.gsub(tostring(name or ""), "%-.+$", "")
 		local realm = coolstats.GetCachedPlayerBrowserRealmName()
 		if name == "" or realm == "" then
@@ -6892,13 +6894,15 @@ if type(coolstats) == "table" then
 		end
 		UIDropDownMenu_AddButton(info, level)
 
-		info = UIDropDownMenu_CreateInfo()
-		info.text = "|cff00bfffWarmane Armory|r"
-		info.notCheckable = 1
-		info.func = function()
-			coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
+		if coolstats.GetCachedPlayerBrowserWarmaneArmoryUrl(name) then
+			info = UIDropDownMenu_CreateInfo()
+			info.text = "|cff00bfffWarmane Armory|r"
+			info.notCheckable = 1
+			info.func = function()
+				coolstats.OpenCachedPlayerBrowserWarmaneArmory(name)
+			end
+			UIDropDownMenu_AddButton(info, level)
 		end
-		UIDropDownMenu_AddButton(info, level)
 
 		info = UIDropDownMenu_CreateInfo()
 		info.text = CLOSE or "Close"
