@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.23 - 2026-07-06
+
+### Log integrity
+
+- Locked all 6,970 per-spec Algalon records across 5,972 players for Onyxia's TOC phase; data generation now aborts if any historical result changes or disappears.
+- Keep every boss parse strictly separated by specialization; default views use one coherent specialization and historical Algalon is labeled with its source spec.
+- Import current boss-leaderboard players even when they have no overall TOGC ranking or Phase 2 history.
+
+### Interface
+
+- Added a chain-link button to UwU Logs panels for inserting the displayed player into chat.
+- Removed the duplicate Historical Algalon row from the panel summary.
+
 ## 0.2.22 - 2026-07-05
 
 ### Onyxia logs

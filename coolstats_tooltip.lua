@@ -2954,19 +2954,27 @@ local function GetUwUSpecBossData(player, specIndex)
 	elseif specIndex == player[4] then
 		bossData = player[8]
 	end
-	if coolstats.GetActiveUwUPhaseId() == "toc" and type(player[8]) == "table" then
-		local algalonIndex = GetUwUBossIndexByName()["Algalon the Observer"]
-		local aggregateAlgalon = algalonIndex and player[8][algalonIndex]
-		if aggregateAlgalon and (type(bossData) ~= "table" or not bossData[algalonIndex]) then
-			local mergedBossData = {}
-			for bossIndex, value in pairs(bossData or {}) do
-				mergedBossData[bossIndex] = value
-			end
-			mergedBossData[algalonIndex] = aggregateAlgalon
-			return mergedBossData
+	return bossData
+end
+
+local function GetUwUBestBossDataAcrossSpecs(player, bossIndex)
+	local bestEntry
+	local bestSpecIndex
+	local bestScore
+	local perSpecBossData = player and player[9]
+	if type(perSpecBossData) ~= "table" then
+		return nil, nil
+	end
+	for specIndex, specBossData in pairs(perSpecBossData) do
+		local entry = type(specBossData) == "table" and specBossData[bossIndex]
+		local score = GetUwUBossScoreCenti(entry)
+		if score and (not bestScore or score > bestScore) then
+			bestEntry = entry
+			bestSpecIndex = specIndex
+			bestScore = score
 		end
 	end
-	return bossData
+	return bestEntry, bestSpecIndex
 end
 
 local function GetUwUSpecIcon(player, specIndex, panel)
@@ -3098,12 +3106,21 @@ local function AddUwUBossLines(player)
 			end
 
 			local entry = bossData and bossData[bossIndex]
+			local historicalSpecIndex
+			if coolstats.GetActiveUwUPhaseId() == "toc" and bossName == "Algalon the Observer" then
+				entry, historicalSpecIndex = GetUwUBestBossDataAcrossSpecs(player, bossIndex)
+			end
 			local scoreCenti = GetUwUBossScoreCenti(entry)
 			local bossRed, bossGreen, bossBlue = 0.45, 0.45, 0.45
 			if scoreCenti then
 				bossRed, bossGreen, bossBlue = GetUwUScoreColor(scoreCenti)
 			end
-			GameTooltip:AddDoubleLine("    " .. GetUwUBossDisplayLabel(bossName), FormatUwUBossTooltipValue(entry), 0.70, 0.70, 0.70, bossRed, bossGreen, bossBlue)
+			local bossLabel = GetUwUBossDisplayLabel(bossName)
+			local historicalSpecName = historicalSpecIndex and GetUwUSpecName(player, historicalSpecIndex)
+			if historicalSpecName then
+				bossLabel = bossLabel .. " (" .. historicalSpecName .. ")"
+			end
+			GameTooltip:AddDoubleLine("    " .. bossLabel, FormatUwUBossTooltipValue(entry), 0.70, 0.70, 0.70, bossRed, bossGreen, bossBlue)
 		end
 	end
 end
@@ -3186,12 +3203,21 @@ local function BuildUwUTooltipCache(player)
 				end
 
 				local entry = bossData and bossData[bossIndex]
+				local historicalSpecIndex
+				if coolstats.GetActiveUwUPhaseId() == "toc" and bossName == "Algalon the Observer" then
+					entry, historicalSpecIndex = GetUwUBestBossDataAcrossSpecs(player, bossIndex)
+				end
 				local bossRed, bossGreen, bossBlue = 0.45, 0.45, 0.45
 				local bossScore = GetUwUBossScoreCenti(entry)
 				if bossScore then
 					bossRed, bossGreen, bossBlue = GetUwUScoreColor(bossScore)
 				end
-				cache.details[#cache.details + 1] = { "double", "    " .. GetUwUBossDisplayLabel(bossName), FormatUwUBossTooltipValue(entry), 0.70, 0.70, 0.70, bossRed, bossGreen, bossBlue }
+				local bossLabel = GetUwUBossDisplayLabel(bossName)
+				local historicalSpecName = historicalSpecIndex and GetUwUSpecName(player, historicalSpecIndex)
+				if historicalSpecName then
+					bossLabel = bossLabel .. " (" .. historicalSpecName .. ")"
+				end
+				cache.details[#cache.details + 1] = { "double", "    " .. bossLabel, FormatUwUBossTooltipValue(entry), 0.70, 0.70, 0.70, bossRed, bossGreen, bossBlue }
 			end
 		end
 	end
@@ -4009,6 +4035,39 @@ local function CreateUwUPanel(frameName, parent, anchorFrame, standalone)
 	end)
 	panel.titleLinkButton = titleLinkButton
 
+	local logLinkButton = CreateFrame("Button", nil, panel)
+	SetFrameSize(logLinkButton, 32, 16)
+	logLinkButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -34, -9)
+	logLinkButton:SetFrameLevel(panel:GetFrameLevel() + 9)
+	logLinkButton:SetNormalTexture("Interface\\TradeSkillFrame\\UI-TradeSkill-LinkButton")
+	local logLinkNormal = logLinkButton:GetNormalTexture()
+	if logLinkNormal then
+		logLinkNormal:SetTexCoord(0, 1, 0, 0.5)
+	end
+	logLinkButton:SetHighlightTexture("Interface\\TradeSkillFrame\\UI-TradeSkill-LinkButton", "ADD")
+	local logLinkHighlight = logLinkButton:GetHighlightTexture()
+	if logLinkHighlight then
+		logLinkHighlight:SetTexCoord(0, 1, 0.5, 1)
+	end
+	logLinkButton:RegisterForClicks("LeftButtonUp")
+	logLinkButton:SetScript("OnClick", function(self)
+		coolstats.InsertPlayerLogLink(self:GetParent().renderName)
+	end)
+	logLinkButton:SetScript("OnEnter", function(self)
+		local linkName = self:GetParent().renderName
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Link UwU Logs", 0.0, 0.75, 1.0)
+		if linkName and linkName ~= "" then
+			GameTooltip:AddLine("Insert [coolstats: " .. linkName .. "] into chat.", 0.86, 0.86, 0.78, true)
+		end
+		GameTooltip:Show()
+	end)
+	logLinkButton:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	logLinkButton:Hide()
+	panel.logLinkButton = logLinkButton
+
 	local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	subtitle:SetPoint("TOP", title, "BOTTOM", 0, -2)
 	subtitle:SetWidth(UWU_INSPECT_PANEL_WIDTH - 16)
@@ -4222,6 +4281,13 @@ RenderUwUPanel = function(panel, name, player, subtitle)
 	panel.renderName = name
 	panel.renderPlayer = player
 	panel.renderSubtitle = subtitle
+	if panel.logLinkButton then
+		if player and name and name ~= "" then
+			panel.logLinkButton:Show()
+		else
+			panel.logLinkButton:Hide()
+		end
+	end
 	SetFrameSize(panel, UWU_INSPECT_PANEL_WIDTH, UWU_INSPECT_PANEL_HEIGHT)
 	UpdateCachedGearPanel(panel, name, player)
 	for index = 1, #panel.rows do
