@@ -429,6 +429,7 @@ local uwuBossIndexByName = nil
 local lastCachedGearPruneAt = 0
 local pendingGearInspectName = nil
 local pendingGearInspectGuid = nil
+coolstats.recentInspectRequestTimes = coolstats.recentInspectRequestTimes or {}
 
 local function GetNowSeconds()
 	if time then
@@ -1277,6 +1278,58 @@ function coolstats.GetCachedTalentSnapshot(name)
 	return snapshot
 end
 
+function coolstats.CountCachedPlayers(store)
+	local count = 0
+	if store and type(store.players) == "table" then
+		for _ in pairs(store.players) do
+			count = count + 1
+		end
+	end
+	return count
+end
+
+function coolstats.PrintCacheDebugLine(message)
+	if DEFAULT_CHAT_FRAME then
+		DEFAULT_CHAT_FRAME:AddMessage("|cff00bfffcoolstats cache:|r " .. tostring(message))
+	end
+end
+
+function coolstats.WarnIfCacheAddonMissing()
+	if coolstats.cacheAddonWarningShown then
+		return
+	end
+	if IsAddOnLoaded and IsAddOnLoaded("coolstats_Cache") then
+		return
+	end
+	coolstats.cacheAddonWarningShown = true
+	coolstats.PrintCacheDebugLine("|cffff4040coolstats_Cache is not loaded.|r Gear and talent snapshots may not persist after reload. Enable the coolstats Cache addon folder.")
+end
+
+function coolstats.PrintCacheDebug(name)
+	EnsureTooltipDatabase()
+	local cacheLoaded = IsAddOnLoaded and IsAddOnLoaded("coolstats_Cache") and true or false
+	local cacheDB = coolstats.GetCacheDatabase()
+	local cacheKind = cacheDB == coolstatsCacheDB and "coolstatsCacheDB" or cacheDB == coolstatsDB and "coolstatsDB" or "runtime"
+	local realmKey = coolstats.GetCurrentCachedPlayerRealmKey and coolstats.GetCurrentCachedPlayerRealmKey() or "unknown"
+	local gearStore = GetCachedGearStore()
+	local talentStore = coolstats.GetCachedTalentStore()
+	coolstats.PrintCacheDebugLine("cache addon loaded: " .. tostring(cacheLoaded) .. " (" .. cacheKind .. "), realm: " .. tostring(realmKey))
+	coolstats.PrintCacheDebugLine("stored snapshots: gear " .. tostring(coolstats.CountCachedPlayers(gearStore)) .. ", talents " .. tostring(coolstats.CountCachedPlayers(talentStore)))
+
+	local targetName = name
+	if not targetName or targetName == "" then
+		targetName = UnitName and UnitName("target") or nil
+	end
+	if targetName and targetName ~= "" then
+		local gear = GetCachedGearSnapshot(targetName)
+		local talents = coolstats.GetCachedTalentSnapshot(targetName)
+		coolstats.PrintCacheDebugLine(tostring(targetName) .. ": gear " .. (gear and "yes" or "no") .. ", talents " .. (talents and "yes" or "no"))
+	end
+	if UnitExists and UnitExists("target") and UnitIsPlayer and UnitIsPlayer("target") then
+		coolstats.PrintCacheDebugLine("target inspect: CanInspect=" .. tostring(CanInspect and CanInspect("target") or false) .. ", visible=" .. tostring(UnitIsVisible and UnitIsVisible("target") or false) .. ", combat=" .. tostring(UnitAffectingCombat and UnitAffectingCombat("player") or false))
+	end
+end
+
 local function FormatCachedGearDateTime(seenAt)
 	seenAt = tonumber(seenAt)
 	if not seenAt or seenAt <= 0 then
@@ -1744,6 +1797,9 @@ local function CacheInspectGearForUnit(unit)
 	store.players[key] = snapshot
 	TouchCachedGearKey(store, key)
 	PruneCachedGearCache(false)
+	if coolstats.UpdateVisibleCachedPlayerBrowserGear then
+		coolstats.UpdateVisibleCachedPlayerBrowserGear(snapshot)
+	end
 	return snapshot
 end
 
@@ -1758,7 +1814,7 @@ function coolstats.TrackInspectRequest(unit)
 	coolstats.pendingTalentInspectGuid = pendingGearInspectGuid
 end
 
-local function RequestGearInspectForUnit(unit)
+local function RequestGearInspectForUnit(unit, force)
 	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then
 		return false
 	end
@@ -1767,6 +1823,17 @@ local function RequestGearInspectForUnit(unit)
 	end
 	if UnitAffectingCombat and UnitAffectingCombat("player") then
 		return false
+	end
+	local requestKey = GetUnitCacheKey(unit)
+	local now = GetTime and GetTime() or 0
+	if not force and requestKey and now > 0 then
+		local requestTimes = coolstats.recentInspectRequestTimes or {}
+		coolstats.recentInspectRequestTimes = requestTimes
+		local last = requestTimes[requestKey] or 0
+		if now - last < 1.5 then
+			return true
+		end
+		requestTimes[requestKey] = now
 	end
 
 	coolstats.TrackInspectRequest(unit)
@@ -1819,6 +1886,33 @@ function coolstats.FindInspectReadyUnit(guid, nameKey)
 	return nil
 end
 
+function coolstats.UpdateVisibleCachedPlayerBrowserGear(snapshot)
+	local panel = coolstats.cachedPlayerBrowser
+	if not snapshot or not panel or not panel:IsShown() or not panel.browserRows then
+		return
+	end
+	local key = NormalizeName(snapshot.name)
+	for _, row in ipairs(panel.browserRows) do
+		if row.key == key then
+			if not row.hasGear and panel.browserCounts then
+				panel.browserCounts.gear = (panel.browserCounts.gear or 0) + 1
+				if row.hasLogs then
+					panel.browserCounts.both = (panel.browserCounts.both or 0) + 1
+				end
+			end
+			row.hasGear = true
+			row.seenAt = snapshot.seenAt
+			row.slotCount = snapshot.slotCount
+			row.classFile = snapshot.classFile or row.classFile
+			row.classIndex = row.classIndex or snapshot.classIndex
+			if coolstats.PaintCachedPlayerBrowserRows then
+				coolstats.PaintCachedPlayerBrowserRows()
+			end
+			return
+		end
+	end
+end
+
 function coolstats.UpdateVisibleCachedPlayerBrowserTalent(snapshot)
 	local panel = coolstats.cachedPlayerBrowser
 	if not snapshot or not panel or not panel:IsShown() or not panel.browserRows then
@@ -1842,7 +1936,7 @@ function coolstats.UpdateVisibleCachedPlayerBrowserTalent(snapshot)
 	end
 end
 
-function coolstats.CaptureReadyInspectTalents(guid, nameKey)
+function coolstats.CaptureReadyInspectTalents(guid, nameKey, keepPendingOnMiss)
 	local unit = coolstats.FindInspectReadyUnit(guid, nameKey)
 	if not unit then
 		return nil
@@ -1856,8 +1950,10 @@ function coolstats.CaptureReadyInspectTalents(guid, nameKey)
 		coolstats.pendingCachedTalentsOpenName = nil
 		coolstats.OpenCachedTalentsForName(pendingName)
 	end
-	coolstats.pendingTalentInspectGuid = nil
-	coolstats.pendingTalentInspectName = nil
+	if snapshot or not keepPendingOnMiss then
+		coolstats.pendingTalentInspectGuid = nil
+		coolstats.pendingTalentInspectName = nil
+	end
 	return snapshot
 end
 
@@ -1926,7 +2022,7 @@ function coolstats.TryCacheLookupTalentsFromUnit(unit, lookupKey)
 	if UnitIsUnit and UnitIsUnit(unit, "player") then
 		return coolstats.CacheInspectTalentsForUnit(unit), false
 	end
-	return nil, RequestGearInspectForUnit(unit)
+	return nil, RequestGearInspectForUnit(unit, true)
 end
 
 function coolstats.CacheTalentsForLookupName(name)
@@ -7916,7 +8012,9 @@ local function AddTooltipLines()
 	end
 	local options = coolstats.GetTooltipFeatureOptions()
 	if options.cacheOnHover ~= false then
-		CacheInspectGearForUnit(unit)
+		if not CacheInspectGearForUnit(unit) then
+			RequestGearInspectForUnit(unit)
+		end
 	end
 
 	if options.guildRank ~= false then
@@ -7998,6 +8096,9 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		if coolstats.EnsureRealmDataLoaded then
 			coolstats.EnsureRealmDataLoaded()
 		end
+		if coolstats.WarnIfCacheAddonMissing then
+			coolstats.WarnIfCacheAddonMissing()
+		end
 		for key in pairs(raidProgressCache) do
 			raidProgressCache[key] = nil
 		end
@@ -8017,6 +8118,9 @@ tooltipFrame:SetScript("OnEvent", function(self, event, ...)
 		if inspectUnit then
 			CacheInspectGearForUnit(inspectUnit)
 		end
+		local talentGuid = coolstats.pendingTalentInspectGuid or inspectGuid or pendingGearInspectGuid
+		local talentName = talentGuid and nil or (coolstats.pendingTalentInspectName or pendingGearInspectName)
+		coolstats.CaptureReadyInspectTalents(talentGuid, talentName, true)
 		pendingGearInspectName = nil
 		pendingGearInspectGuid = nil
 		if lookupUwUPanel and lookupUwUPanel:IsShown() then

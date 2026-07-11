@@ -5849,6 +5849,7 @@ local function ShowHelp()
 	Print("/coolstats settings - open settings")
 	Print("/coolstats browser - open the player browser")
 	Print("/coolstats uwu [player name] - open UwU Logs for a player")
+	Print("/coolstats cachedebug [player name] - print cached gear/talent diagnostics")
 end
 
 local function SlashHandler(message)
@@ -5881,6 +5882,12 @@ local function SlashHandler(message)
 			end
 		else
 			Print("UwU Logs data module is not loaded.")
+		end
+	elseif commandLower == "cachedebug" then
+		if coolstats.PrintCacheDebug then
+			coolstats.PrintCacheDebug(rest)
+		else
+			Print("Cache diagnostics are not available yet.")
 		end
 	else
 		ShowHelp()
