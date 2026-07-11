@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.26-rg1 - 2026-07-11
+
+### Core sync
+
+- Ported the upstream 0.2.26 achievement-comparison fallback hardening so first-hover raid progress checks can load Blizzard_AchievementUI safely before comparing another player.
+- Added Lua 5.1 validation to the Rising Gods package flow so Wrath-client syntax/chunk issues block release packaging.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile while keeping the package ranked-player-only.
+- Kept boss leaderboards restricted to enriching current ranked players; rankless boss-only rows remain excluded.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.26-rg1`.
+- Kept release packaging isolated to `coolstats`, `coolstats_Cache`, and `coolstats_Data_RisingGods`.
+
 ## 0.2.23-rg2 - 2026-07-08
 
 ### Rising Gods

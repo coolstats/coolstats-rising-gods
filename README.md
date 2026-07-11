@@ -11,7 +11,7 @@ coolstats_Cache/
 coolstats_Data_RisingGods/
 ```
 
-The core is based on upstream coolstats `v0.2.23`, while realm data, maintenance
+The core is based on upstream coolstats `v0.2.26`, while realm data, maintenance
 scripts, releases, and GitHub history are maintained independently here.
 
 ## Features
@@ -72,7 +72,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.23-rg2
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.26-rg1
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for safety rules.

@@ -13,6 +13,7 @@ local RAID_PROGRESS_FAILED_CACHE_SECONDS = 1.5
 local RAID_PROGRESS_LOW_LEVEL_CACHE_SECONDS = SECONDS_PER_DAY
 local RAID_PROGRESS_PRUNE_INTERVAL_SECONDS = 60
 local RAID_PROGRESS_REQUEST_TIMEOUT_SECONDS = 4
+coolstats.ACHIEVEMENT_COMPARISON_READY_DELAY_SECONDS = 0.25
 coolstats.RAID_PROGRESS_REQUEST_THROTTLE = {
 	dwell = 0.10,
 	interval = 1.0,
@@ -405,6 +406,8 @@ coolstats.raidProgressRequestState = {
 	last = -100,
 }
 local tooltipAchievementComparisonOwned = false
+coolstats.achievementComparisonReadyAt = coolstats.achievementComparisonReadyAt or 0
+coolstats.achievementComparisonStatusBarsGuarded = coolstats.achievementComparisonStatusBarsGuarded or false
 local lastRaidProgressPruneAt = 0
 local tooltipFrame = CreateFrame("Frame")
 local inspectUwUPanel = nil
@@ -2047,11 +2050,55 @@ function coolstats.YieldTooltipAchievementComparisonToUI()
 end
 
 function coolstats.HookAchievementComparisonUI()
-	if not AchievementFrameComparison or AchievementFrameComparison.__coolstatsComparisonGuardHooked then
-		return
+	if not coolstats.achievementComparisonStatusBarsGuarded and type(AchievementFrameComparison_UpdateStatusBars) == "function" then
+		local originalUpdateStatusBars = AchievementFrameComparison_UpdateStatusBars
+		AchievementFrameComparison_UpdateStatusBars = function(...)
+			local ok = pcall(originalUpdateStatusBars, ...)
+			if not ok then
+				return
+			end
+		end
+		coolstats.achievementComparisonStatusBarsGuarded = true
 	end
-	AchievementFrameComparison.__coolstatsComparisonGuardHooked = true
-	AchievementFrameComparison:HookScript("OnShow", coolstats.YieldTooltipAchievementComparisonToUI)
+	if AchievementFrameComparison and not AchievementFrameComparison.__coolstatsComparisonGuardHooked then
+		AchievementFrameComparison.__coolstatsComparisonGuardHooked = true
+		AchievementFrameComparison:HookScript("OnShow", coolstats.YieldTooltipAchievementComparisonToUI)
+	end
+end
+
+function coolstats.IsBlizzardAchievementUILoaded()
+	if not IsAddOnLoaded then
+		return true
+	end
+	local ok, loaded = pcall(IsAddOnLoaded, "Blizzard_AchievementUI")
+	return ok and loaded == true
+end
+
+function coolstats.EnsureAchievementComparisonReady()
+	local now = GetTime()
+	if SetAchievementComparisonUnit then
+		coolstats.HookAchievementComparisonUI()
+		return true, false, nil
+	end
+
+	if not coolstats.IsBlizzardAchievementUILoaded() and LoadAddOn then
+		local ok, loaded = pcall(LoadAddOn, "Blizzard_AchievementUI")
+		coolstats.HookAchievementComparisonUI()
+		if SetAchievementComparisonUnit then
+			return true, false, nil
+		end
+		if ok and loaded then
+			coolstats.achievementComparisonReadyAt = now + coolstats.ACHIEVEMENT_COMPARISON_READY_DELAY_SECONDS
+			return false, true, "Retry shortly"
+		end
+	end
+	if not GetAchievementComparisonInfo and not GetComparisonStatistic then
+		return false, false, "Unavailable"
+	end
+	if coolstats.achievementComparisonReadyAt and now < coolstats.achievementComparisonReadyAt then
+		return false, true, "Retry shortly"
+	end
+	return false, false, "Unavailable"
 end
 
 local function ClearRaidProgressCacheForUnit(unit)
@@ -2384,6 +2431,21 @@ function coolstats.StartQueuedRaidProgressRequest(request, now)
 		return false
 	end
 
+	local ready, retry, message = coolstats.EnsureAchievementComparisonReady()
+	if not ready then
+		if retry then
+			coolstats.raidProgressRequestState.queued = {
+				key = key,
+				unit = unit,
+				queuedAt = now + coolstats.ACHIEVEMENT_COMPARISON_READY_DELAY_SECONDS,
+			}
+			tooltipFrame:SetScript("OnUpdate", coolstats.RaidProgressFrame_OnUpdate)
+		else
+			CacheRaidProgressFailure(key, false, message or "Unavailable")
+		end
+		return false
+	end
+
 	coolstats.ClearTooltipAchievementComparison(true)
 	local ok = pcall(SetAchievementComparisonUnit, unit)
 	if not ok then
@@ -2480,8 +2542,9 @@ local function RequestRaidProgress(unit, key)
 		return
 	end
 
-	if not SetAchievementComparisonUnit then
-		CacheRaidProgressFailure(key, false, "Unavailable")
+	local ready, retry, message = coolstats.EnsureAchievementComparisonReady()
+	if not ready and not retry then
+		CacheRaidProgressFailure(key, false, message or "Unavailable")
 		return
 	end
 

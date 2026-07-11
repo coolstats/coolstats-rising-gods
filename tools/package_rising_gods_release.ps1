@@ -4,14 +4,17 @@ param(
 
 	[string]$PublishDirectory = "",
 
-	[string]$OutputDirectory = (Join-Path $PSScriptRoot "..\releases")
+	[string]$OutputDirectory = (Join-Path $PSScriptRoot "..\releases"),
+
+	[string]$LuacPath = "",
+
+	[switch]$SkipLua51Validation
 )
 
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
 	$publishCandidates = @(
-		(Join-Path $PSScriptRoot "..\coolstats_publish"),
 		(Join-Path $PSScriptRoot "..")
 	)
 	$PublishDirectory = $publishCandidates |
@@ -37,6 +40,27 @@ $tocVersion = Select-String -LiteralPath $tocPath -Pattern "^## Version:\s*(.+)$
 	Select-Object -First 1
 if (-not $tocVersion -or $tocVersion.Matches[0].Groups[1].Value.Trim() -ne $Version) {
 	throw "coolstats.toc version does not match requested release version $Version"
+}
+
+if (-not $SkipLua51Validation) {
+	$luaValidator = Join-Path $PSScriptRoot "validate_lua51.ps1"
+	if (-not (Test-Path -LiteralPath $luaValidator)) {
+		throw "Missing Lua 5.1 validator: $luaValidator"
+	}
+	$validatorArguments = @(
+		"-NoProfile",
+		"-ExecutionPolicy", "Bypass",
+		"-File", $luaValidator,
+		"-PublishDirectory", $publishPath,
+		"-Quiet"
+	)
+	if (-not [string]::IsNullOrWhiteSpace($LuacPath)) {
+		$validatorArguments += @("-LuacPath", $LuacPath)
+	}
+	& powershell @validatorArguments
+	if ($LASTEXITCODE -ne 0) {
+		throw "Lua 5.1 validation failed; refusing to package release."
+	}
 }
 
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null

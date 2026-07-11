@@ -25,13 +25,15 @@ addon `coolstats_Data_RisingGods`.
 8. The release archive must contain only the core, cache, and Rising Gods data addons.
 9. Never point these scripts at the Warmane repository or its release directory.
 10. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
+11. Lua 5.1 validation must pass before packaging or publishing a release.
 
 ## Commands
 
 ```powershell
 .\tools\update_rising_gods.ps1 -Mode Validate
 .\tools\update_rising_gods.ps1 -Mode Weekly
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.23-rg2
+.\tools\validate_lua51.ps1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.26-rg1
 ```
 
 Generated runtime data:
@@ -46,3 +48,11 @@ Local ignored maintenance data:
 data/uwu_logs_rising_gods.json
 data/uwu_character_boss_cache_rising_gods.json
 ```
+
+## Release naming
+
+- Tag releases as `v<version>`, for example `v0.2.26-rg1`.
+- Title GitHub Releases as `coolstats Rising Gods <version>`.
+- Upload `coolstats_rising_gods_<version>.zip` as the release asset.
+- Do not use Warmane release assets, Warmane realm-data folders, or Warmane
+  generated JSON/cache files in this repository.
