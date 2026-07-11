@@ -72,7 +72,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.26-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.26-rg2
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for safety rules.

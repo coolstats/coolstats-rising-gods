@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.26-rg2 - 2026-07-11
 
 ### Rising Gods cache
 
 - Hardened cached gear/talent snapshots by actively requesting inspect data on hover, forcing inspect refreshes when opening cached talents, and using `INSPECT_READY` as a safe talent-capture fallback.
 - Added immediate browser-row updates when a gear snapshot is written.
 - Added `/coolstats cachedebug [player]` and a missing-cache-addon warning to help testers confirm whether `coolstats_Cache` is loaded and whether snapshots are being stored.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.26-rg2`.
 
 ## 0.2.26-rg1 - 2026-07-11
 
