@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.29-rg1 - 2026-07-16
+
+### Core sync
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.29`.
+- Added the updated player-browser boss filter, individual boss sort mode, taller color-coded parse histogram, and connected distribution curve.
+- Kept Rising Gods realm handling isolated to `coolstats_Data_RisingGods`.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs.
+- Bundled 7,422 active ranked players across the 13 configured ICC-era encounters.
+- Completed 390 bulk boss requests with 101,671 bundled boss rows and no failed leaderboard or boss refresh requests.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.29-rg1`.
+- Kept release packaging limited to `coolstats`, `coolstats_Cache`, and `coolstats_Data_RisingGods`.
+
 ## 0.2.26-rg2 - 2026-07-11
 
 ### Rising Gods cache

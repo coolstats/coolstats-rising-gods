@@ -11,7 +11,7 @@ coolstats_Cache/
 coolstats_Data_RisingGods/
 ```
 
-The core is based on upstream coolstats `v0.2.26`, while realm data, maintenance
+The core is based on upstream coolstats `v0.2.29`, while realm data, maintenance
 scripts, releases, and GitHub history are maintained independently here.
 
 ## Features
@@ -19,13 +19,16 @@ scripts, releases, and GitHub history are maintained independently here.
 - UwU Logs scores, rankings, and specialization-specific boss parses in game.
 - Ranked-player-only bundled data; boss leaderboards enrich ranked players but do not add rankless boss-only records.
 - ICC-era coverage for ICC 25 heroic, Toravon, Halion, and Anub'arak.
-- Searchable player browser with class/spec filters and favourites.
+- Searchable player browser with class, spec, and individual-boss filters, plus boss parse distribution histograms.
 - Direct player-log links through compact `[coolstats: Player]` chat tokens.
 - Cached gear and talent inspection.
 - Optional character-panel enhancements and loot alerts.
 
 The game addon performs no web requests. UwU Logs data is generated outside the
 game and bundled into each release.
+
+Current `0.2.29-rg1` data was refreshed on 2026-07-16 and includes 7,422
+ranked players across the 13 configured Rising Gods encounters.
 
 ## Installation
 
@@ -72,7 +75,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.26-rg2
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.29-rg1
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for safety rules.
