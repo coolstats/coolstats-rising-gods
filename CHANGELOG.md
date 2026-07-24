@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.34-rg3 - 2026-07-24
+
+### Public log updater
+
+- Added `Update_Rising_Gods_Logs.bat` to the release ZIP root so users can
+  refresh Rising Gods UwU Logs data themselves after extracting the addon.
+- Shipped the readable helper scripts in `coolstats_LogUpdater/tools/` instead
+  of a compiled executable.
+- Made release installs plug-and-play: when the ZIP is extracted directly into
+  `Interface\AddOns`, the BAT auto-detects that folder and updates only
+  `coolstats_Data_RisingGods`.
+
+### Safety and privacy
+
+- Added a fail-closed Rising Gods data integrity audit covering TOC wiring, ICC
+  boss coverage, six generated chunks, chunk balance, duplicate Lua keys,
+  ranked-player count, and rankless-row guards.
+- Added a release privacy audit that blocks maintainer-local paths, usernames,
+  saved AddOns paths, credentials, and non-`coolstats` GitHub owners from the
+  downloadable ZIP.
+- Validated staged data before replacement and validated the copied live data
+  addon again after replacement.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg3`.
+- Kept the bundled data refreshed at 10,075 active ranked players across the 13
+  configured ICC-era encounters.
+
 ## 0.2.34-rg2 - 2026-07-24
 
 ### Rising Gods data

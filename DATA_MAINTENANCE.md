@@ -34,14 +34,47 @@ addon `coolstats_Data_RisingGods`.
 15. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
 16. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
 
+## Public data updater
+
+`Update_Rising_Gods_Logs.bat` is the community-facing entry point for local log
+refreshes. It calls `tools/update_rising_gods_live_logs.ps1`, which reuses the
+same UwU updater as official releases.
+
+The public updater must stay auditable and data-only:
+
+- keep it as readable `.bat`, `.ps1`, and `.py` source; do not replace it with a
+  compiled executable unless there is a specific, reviewed need;
+- do not request administrator rights, credentials, GitHub tokens, or Git
+  publishing access;
+- update only `coolstats_Data_RisingGods` in the user's live `Interface\AddOns`
+  folder;
+- back up the old live data addon before replacement;
+- validate generated Rising Gods metadata, encounter coverage, ranked-player
+  count, duplicate player keys, chunk distribution, and rankless-row guards
+  before install;
+- validate the copied live data addon again after replacement, and restore the
+  backup if replacement fails;
+- keep the shipped BAT/helper files free of maintainer-local paths, usernames,
+  saved AddOns paths, credentials, and non-`coolstats` GitHub owners;
+- run the release privacy audit before publishing any ZIP;
+- run Lua 5.1 validation when `luac` is available, and make it required only for
+  official release packaging.
+- ship the BAT at the release ZIP root and the helper scripts in
+  `coolstats_LogUpdater/tools/` so an extracted release can auto-detect its
+  `Interface\AddOns` folder.
+
 ## Commands
 
 ```powershell
 .\tools\update_rising_gods.ps1 -Mode Validate
 .\tools\update_rising_gods.ps1 -Mode Weekly
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
+.\Update_Rising_Gods_Logs.bat
+.\Update_Rising_Gods_Logs.bat -NoInstall
+.\tools\update_rising_gods_live_logs.ps1 -ValidateOnly
+.\tools\update_rising_gods_live_logs.ps1 -NoInstall
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg2
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg3
 ```
 
 Generated runtime data:

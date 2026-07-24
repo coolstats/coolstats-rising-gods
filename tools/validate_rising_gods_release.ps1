@@ -27,11 +27,30 @@ if (Test-Path -LiteralPath $validationRoot) {
 
 try {
 	Expand-Archive -LiteralPath $ZipPath -DestinationPath $validationRoot
-	$expectedFolders = @("coolstats", "coolstats_Cache", "coolstats_Data_RisingGods")
+	$expectedFolders = @("coolstats", "coolstats_Cache", "coolstats_Data_RisingGods", "coolstats_LogUpdater")
 	$actualFolders = @(Get-ChildItem -LiteralPath $validationRoot -Directory | Select-Object -ExpandProperty Name | Sort-Object)
 	$expectedSorted = @($expectedFolders | Sort-Object)
 	if (($actualFolders -join "|") -ne ($expectedSorted -join "|")) {
 		throw "Unexpected top-level addon folders. Expected $($expectedSorted -join ', '); found $($actualFolders -join ', ')."
+	}
+
+	$launcherPath = Join-Path $validationRoot "Update_Rising_Gods_Logs.bat"
+	if (-not (Test-Path -LiteralPath $launcherPath)) {
+		throw "Missing public updater launcher at release root."
+	}
+
+	$requiredUpdaterFiles = @(
+		"update_rising_gods_live_logs.ps1",
+		"update_rising_gods.ps1",
+		"update_uwu_logs.py",
+		"test_rising_gods_data_integrity.ps1",
+		"validate_lua51.ps1"
+	)
+	foreach ($file in $requiredUpdaterFiles) {
+		$path = Join-Path $validationRoot "coolstats_LogUpdater\tools\$file"
+		if (-not (Test-Path -LiteralPath $path)) {
+			throw "Missing public updater helper: $file"
+		}
 	}
 
 	$forbidden = @("coolstats_Data_Onyxia", "coolstats_Data_Icecrown", "coolstats_Data_Lordaeron")
@@ -76,6 +95,18 @@ try {
 			throw "Missing generated Rising Gods data file: $file"
 		}
 	}
+
+	$privacyScript = Join-Path $repositoryRoot "tools\test_release_privacy.ps1"
+	if (-not (Test-Path -LiteralPath $privacyScript)) {
+		throw "Missing release privacy audit: $privacyScript"
+	}
+	& $privacyScript -RootPath $validationRoot -Quiet
+
+	$auditScript = Join-Path $repositoryRoot "tools\test_rising_gods_data_integrity.ps1"
+	if (-not (Test-Path -LiteralPath $auditScript)) {
+		throw "Missing Rising Gods data integrity audit: $auditScript"
+	}
+	& $auditScript -DataAddonPath (Join-Path $validationRoot "coolstats_Data_RisingGods") -ExpectedVersion $Version -ExpectedMaxPerSpec 600 -Quiet
 }
 finally {
 	if (Test-Path -LiteralPath $validationRoot) {

@@ -40,6 +40,7 @@ DEFAULT_BULK_TOP_LIMIT = 10000
 DEFAULT_BULK_CHECKPOINT_EVERY = 10
 LUA_PLAYER_CHUNK_COUNT = 6
 PROFILE_VALIDATION_LIMIT = 10
+ADDON_VERSION_OVERRIDE = None
 
 CLASSES = [
     "Death Knight",
@@ -192,6 +193,8 @@ def default_json_path(server: str, profile: dict) -> Path:
 
 
 def read_core_addon_version() -> str:
+    if ADDON_VERSION_OVERRIDE:
+        return ADDON_VERSION_OVERRIDE
     toc_path = ADDON_ROOT / "coolstats.toc"
     try:
         for line in toc_path.read_text(encoding="utf-8").splitlines():
@@ -1790,7 +1793,12 @@ def main() -> int:
     parser.add_argument("--previous-json", type=Path, default=None, help="Read preserved stale players from this JSON instead of --json-output.")
     parser.add_argument("--lua-output", type=Path, default=None)
     parser.add_argument("--json-output", type=Path, default=None)
+    parser.add_argument("--addon-version", default=None, help="Version to write into the generated data addon TOC.")
     args = parser.parse_args()
+
+    global ADDON_VERSION_OVERRIDE
+    if args.addon_version:
+        ADDON_VERSION_OVERRIDE = str(args.addon_version).strip() or None
 
     try:
         realm_profile = configure_realm_profile(args.server, args.phase)

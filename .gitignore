@@ -12,6 +12,7 @@ data/logs/*
 __pycache__/
 *.pyc
 release_logs/
+releases/
 
 # Local screenshots/videos used while developing the addon.
 *.png

@@ -158,10 +158,33 @@ if (-not $realmAddon) {
 				$destinationPath = Join-Path $realmStage $relativePath
 				New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
 				Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
-			}
+		}
 
 if (Test-Path -LiteralPath $zipPath) {
 	Remove-Item -LiteralPath $zipPath -Force
+}
+
+$rootUpdater = Join-Path $publishPath "Update_Rising_Gods_Logs.bat"
+if (-not (Test-Path -LiteralPath $rootUpdater)) {
+	throw "Missing public updater launcher: $rootUpdater"
+}
+Copy-Item -LiteralPath $rootUpdater -Destination (Join-Path $stageRoot "Update_Rising_Gods_Logs.bat") -Force
+
+$updaterStage = Join-Path $stageRoot "coolstats_LogUpdater\tools"
+New-Item -ItemType Directory -Path $updaterStage -Force | Out-Null
+$updaterFiles = @(
+	"update_rising_gods_live_logs.ps1",
+	"update_rising_gods.ps1",
+	"update_uwu_logs.py",
+	"test_rising_gods_data_integrity.ps1",
+	"validate_lua51.ps1"
+)
+foreach ($file in $updaterFiles) {
+	$sourcePath = Join-Path $PSScriptRoot $file
+	if (-not (Test-Path -LiteralPath $sourcePath)) {
+		throw "Missing public updater helper: $sourcePath"
+	}
+	Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $updaterStage $file) -Force
 }
 
 Add-Type -AssemblyName System.IO.Compression

@@ -18,7 +18,6 @@ function Resolve-Luac51Path {
 	if (-not [string]::IsNullOrWhiteSpace($env:LUAC51)) {
 		$candidates += $env:LUAC51
 	}
-	$candidates += "C:\Lua\Lua 5.1\luac5.1.exe"
 
 	$command = Get-Command luac5.1 -ErrorAction SilentlyContinue
 	if ($command) {

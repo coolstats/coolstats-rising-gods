@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import re
 import unittest
 from pathlib import Path
@@ -194,6 +195,115 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn('"--boss-name"', update_script)
         self.assertIn("targeted character boss repair after bulk mode", updater)
         self.assertNotIn("boss-name is only used by --character-bosses", updater)
+
+    def test_public_log_updater_is_auditable_and_data_only(self):
+        launcher = (REPOSITORY_ROOT / "Update_Rising_Gods_Logs.bat").read_text(encoding="utf-8")
+        live_updater = (
+            REPOSITORY_ROOT / "tools" / "update_rising_gods_live_logs.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("update_rising_gods_live_logs.ps1", launcher)
+        self.assertIn("coolstats_Data_RisingGods", launcher)
+        self.assertIn("confirmation screen", launcher)
+        self.assertIn("Preparing updater", launcher)
+        self.assertIn("Choose update mode", launcher)
+        self.assertIn("Update this working folder only", launcher)
+        self.assertIn("-NoInstall", launcher)
+        self.assertIn("-ValidateOnly", launcher)
+        self.assertIn("Get-RunStepLabels", live_updater)
+        self.assertIn("Write-Progress", live_updater)
+        self.assertIn("Confirm-UpdatePlan", live_updater)
+        self.assertIn("c o o l s t a t s", live_updater)
+        self.assertIn("Rising Gods logs", live_updater)
+        self.assertIn("Get-UpdaterLayout", live_updater)
+        self.assertIn("Kind = \"Installed\"", live_updater)
+        self.assertIn("Using this release folder as AddOns path", live_updater)
+        self.assertIn("coolstats_LogUpdater", launcher)
+        self.assertIn("Release install detected", launcher)
+        self.assertIn("Continue with this update? Type Y to start", live_updater)
+        self.assertIn('-Mode "Validate"', live_updater)
+        self.assertIn('-Mode "Weekly"', live_updater)
+        self.assertIn("coolstats_Data_RisingGods", live_updater)
+        self.assertIn("Backed up old data addon", live_updater)
+        self.assertIn("ValidateOnly", live_updater)
+        self.assertIn("Resolve-OptionalLuac51Path", live_updater)
+        self.assertIn("Lua 5.1 validation failed; refusing to install generated data", live_updater)
+        self.assertIn("Assert-RisingGodsDataAddonShape", live_updater)
+        self.assertIn("Invoke-RisingGodsDataIntegrityAudit", live_updater)
+        self.assertIn("test_rising_gods_data_integrity.ps1", live_updater)
+        self.assertIn("rankless player rows", live_updater)
+        self.assertIn("Refusing to update from a workspace containing non-Rising-Gods realm data", live_updater)
+        self.assertNotIn("coolstats_Data_Onyxia", live_updater)
+        self.assertNotIn("C:\\", launcher)
+        self.assertNotIn("C:\\", live_updater)
+        self.assertNotIn("D:\\", launcher)
+        self.assertNotIn("D:\\", live_updater)
+        forbidden_fragments = (
+            "Invoke-Expression",
+            "iex ",
+            "Start-Process",
+            "Add-MpPreference",
+            "Set-ExecutionPolicy",
+            "git push",
+        )
+        for fragment in forbidden_fragments:
+            self.assertNotIn(fragment, live_updater)
+
+    def test_release_package_ships_public_log_updater(self):
+        package_script = (
+            REPOSITORY_ROOT / "tools" / "package_rising_gods_release.ps1"
+        ).read_text(encoding="utf-8")
+        validator = (
+            REPOSITORY_ROOT / "tools" / "validate_rising_gods_release.ps1"
+        ).read_text(encoding="utf-8")
+        wrapper = (REPOSITORY_ROOT / "tools" / "update_rising_gods.ps1").read_text(encoding="utf-8")
+        updater = (REPOSITORY_ROOT / "tools" / "update_uwu_logs.py").read_text(encoding="utf-8")
+        lua_validator = (
+            REPOSITORY_ROOT / "tools" / "validate_lua51.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Update_Rising_Gods_Logs.bat", package_script)
+        self.assertIn("coolstats_LogUpdater\\tools", package_script)
+        self.assertIn("update_rising_gods_live_logs.ps1", package_script)
+        self.assertIn("update_uwu_logs.py", package_script)
+        self.assertIn("test_rising_gods_data_integrity.ps1", package_script)
+        self.assertIn("coolstats_LogUpdater", validator)
+        self.assertIn("Missing public updater launcher", validator)
+        self.assertIn("test_rising_gods_data_integrity.ps1", validator)
+        self.assertIn("test_release_privacy.ps1", validator)
+        self.assertIn("ExpectedMaxPerSpec 600", validator)
+        self.assertIn("AllowInstalledLayout", wrapper)
+        self.assertIn("--lua-output", wrapper)
+        self.assertIn("--json-output", wrapper)
+        self.assertIn("--boss-cache", wrapper)
+        self.assertIn("--addon-version", wrapper)
+        self.assertIn("ADDON_VERSION_OVERRIDE", updater)
+        self.assertNotIn("C:\\", lua_validator)
+
+    def test_release_privacy_audit_blocks_local_traces(self):
+        privacy = (
+            REPOSITORY_ROOT / "tools" / "test_release_privacy.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("absolute Windows drive path", privacy)
+        self.assertIn("Windows user profile path", privacy)
+        self.assertIn("local machine fragment", privacy)
+        self.assertIn("github\\.com/(?!coolstats/)", privacy)
+        username = os.environ.get("USERNAME", "")
+        if len(username) > 2:
+            self.assertNotIn(username, privacy)
+
+    def test_data_integrity_audit_guards_generated_tranches(self):
+        audit = (
+            REPOSITORY_ROOT / "tools" / "test_rising_gods_data_integrity.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ExpectedChunkCount = 6", audit)
+        self.assertIn("Duplicate player key across chunks", audit)
+        self.assertIn("Generated data chunks are not balanced", audit)
+        self.assertIn("rankless player rows", audit)
+        self.assertIn("coolstats_Data_RisingGods", audit)
+        self.assertIn("maxPerSpec", audit)
+        self.assertIn("Rising-Gods", audit)
+        self.assertIn("Anub'arak", audit)
+        self.assertIn("Unexpected non-addon files", audit)
+        self.assertNotIn("coolstats_Data_Onyxia", audit)
 
     def test_warmane_realm_directories_are_absent(self):
         realm_root = REPOSITORY_ROOT / "realm_data"

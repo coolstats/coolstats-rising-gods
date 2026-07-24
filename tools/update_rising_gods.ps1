@@ -14,7 +14,17 @@ param(
 
 	[double]$Sleep = 0.08,
 
-	[string]$Python = "python"
+	[string]$Python = "python",
+
+	[string]$LuaOutput = "",
+
+	[string]$JsonOutput = "",
+
+	[string]$BossCache = "",
+
+	[string]$AddonVersion = "",
+
+	[switch]$AllowInstalledLayout
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +32,10 @@ $updater = Join-Path $PSScriptRoot "update_uwu_logs.py"
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $expectedToc = Join-Path $repositoryRoot "coolstats.toc"
 
-if (-not (Test-Path -LiteralPath $updater) -or -not (Test-Path -LiteralPath $expectedToc)) {
+if (-not (Test-Path -LiteralPath $updater)) {
+	throw "Missing Rising Gods updater script: $updater"
+}
+if (-not (Test-Path -LiteralPath $expectedToc) -and -not $AllowInstalledLayout) {
 	throw "Rising Gods updater must run from the coolstats-rising-gods repository."
 }
 
@@ -55,6 +68,19 @@ foreach ($name in $BossName) {
 	if (-not [string]::IsNullOrWhiteSpace($name)) {
 		$arguments += @("--boss-name", $name)
 	}
+}
+
+if (-not [string]::IsNullOrWhiteSpace($LuaOutput)) {
+	$arguments += @("--lua-output", ([System.IO.Path]::GetFullPath($LuaOutput)))
+}
+if (-not [string]::IsNullOrWhiteSpace($JsonOutput)) {
+	$arguments += @("--json-output", ([System.IO.Path]::GetFullPath($JsonOutput)))
+}
+if (-not [string]::IsNullOrWhiteSpace($BossCache)) {
+	$arguments += @("--boss-cache", ([System.IO.Path]::GetFullPath($BossCache)))
+}
+if (-not [string]::IsNullOrWhiteSpace($AddonVersion)) {
+	$arguments += @("--addon-version", $AddonVersion)
 }
 
 Push-Location $repositoryRoot
