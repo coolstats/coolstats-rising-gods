@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.2.34-rg1 - 2026-07-24
+
+### Core sync
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.34`.
+- Added the Update Center, group version/data freshness checks, and browser
+  toolbar Update button.
+- Added the cached Statistics panel with specialization representation bars,
+  boss-specific drilldown, tabard backgrounds, and bottom sum validation.
+- Added the Boss DPS browser column when an individual boss filter is selected.
+- Kept the restored Log Analysis geometry so the comparison chart does not
+  overflow the analysis window.
+
+### Rising Gods
+
+- Replaced Warmane Armory actions with Rising Gods profile links using
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<character>`.
+- Kept Rising Gods realm loading isolated to `coolstats_Data_RisingGods`.
+- Preserved the Rising Gods cache diagnostics and `/coolstats cachedebug`
+  helper while syncing the shared runtime.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs on 2026-07-24.
+- Bundled 7,429 active ranked players across the 13 configured ICC-era
+  encounters.
+- Completed 390 bulk boss requests with 101,805 bundled boss rows, no failed
+  requests, and no boss-only players added.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg1`.
+- Kept release packaging limited to `coolstats`, `coolstats_Cache`, and
+  `coolstats_Data_RisingGods`.
+
 ## 0.2.29-rg1 - 2026-07-16
 
 ### Core sync

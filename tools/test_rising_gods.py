@@ -128,10 +128,16 @@ class RisingGodsTests(unittest.TestCase):
     def test_loader_and_ui_are_rising_gods_specific(self):
         loader = (REPOSITORY_ROOT / "coolstats_data_loader.lua").read_text(encoding="utf-8")
         tooltip = (REPOSITORY_ROOT / "coolstats_tooltip.lua").read_text(encoding="utf-8")
+        core = (REPOSITORY_ROOT / "coolstats.lua").read_text(encoding="utf-8")
         self.assertIn('risinggods = "coolstats_Data_RisingGods"', loader)
         self.assertNotIn('onyxia = "coolstats_Data_Onyxia"', loader)
-        self.assertIn('if realmKey == "risinggods" then', tooltip)
+        self.assertIn('risinggods = "Rising-Gods"', tooltip)
+        self.assertIn('https://db.rising-gods.de/?profile=eu.rising-gods.', tooltip)
+        self.assertNotIn("armory.warmane.com", tooltip)
+        self.assertNotIn("Warmane Armory", tooltip)
         self.assertIn("GetCachedPlayerBrowserWarmaneArmoryUrl(name)", tooltip)
+        self.assertIn("coolstats/coolstats-rising-gods/releases/latest", core)
+        self.assertNotIn("warperia.com/addon-wotlk/coolstats", core)
 
     def test_release_script_has_a_strict_realm_allowlist(self):
         package_script = (

@@ -13,6 +13,14 @@ local lower = string.lower
 local match = string.match
 local gsub = string.gsub
 
+coolstats.UPDATE_CENTER_GITHUB_URL = "https://github.com/coolstats/coolstats-rising-gods/releases/latest"
+coolstats.UPDATE_CENTER_WARPERIA_URL = "https://github.com/coolstats/coolstats-rising-gods"
+coolstats.UPDATE_CENTER_PREFIX = "coolstats"
+coolstats.UPDATE_CENTER_REMINDER_SECONDS = 86400
+coolstats.UPDATE_CENTER_BROADCAST_SECONDS = 300
+coolstats.UPDATE_CENTER_REQUEST_SECONDS = 8
+coolstats.UPDATE_CENTER_REQUEST_RESULTS_SECONDS = 3
+
 local db
 local ui = { rows = {}, rowByKey = {}, sections = {}, badges = { player = {}, inspect = {} }, modelScores = {}, appearanceToggles = {}, statPopouts = {} }
 local nativeStatFrames = {}
@@ -23,6 +31,8 @@ local updateElapsed = 0
 local tooltipsHooked = false
 local gearScoreTamed = false
 local QueueUpdate
+coolstats.updateCenterLastBroadcastAt = coolstats.updateCenterLastBroadcastAt or 0
+coolstats.updateCenterRequestUntil = coolstats.updateCenterRequestUntil or 0
 
 local defaults = {
 	enableCharacterPanel = true,
@@ -84,6 +94,7 @@ local defaults = {
 		angle = 150,
 		radius = 80,
 	},
+	updateCenter = {},
 }
 
 local PANEL_WIDTH = 236
@@ -594,6 +605,461 @@ local function SafeCall(method, ...)
 	end
 end
 
+function coolstats.GetClockSeconds()
+	if time then
+		return time()
+	end
+	if GetTime then
+		return floor(GetTime())
+	end
+	return 0
+end
+
+function coolstats.GetSessionSeconds()
+	if GetTime then
+		return GetTime()
+	end
+	return coolstats.GetClockSeconds()
+end
+
+function coolstats.IsInRaidGroup()
+	if UnitInRaid and UnitInRaid("player") then
+		return true
+	end
+	local raidMembers = GetNumRaidMembers and (GetNumRaidMembers() or 0) or 0
+	return raidMembers > 0
+end
+
+function coolstats.GetGroupAddonChannel()
+	if coolstats.IsInRaidGroup() then
+		return "RAID"
+	end
+	local partyMembers = GetNumPartyMembers and (GetNumPartyMembers() or 0) or 0
+	if partyMembers > 0 then
+		return "PARTY"
+	end
+	return nil
+end
+
+function coolstats.IsPlayerInGuild()
+	return _G.IsInGuild and _G.IsInGuild()
+end
+
+function coolstats.SendUpdateCenterAddonMessage(message, channel, target)
+	if not message or not channel then
+		return false
+	end
+	if C_ChatInfo and C_ChatInfo.SendAddonMessage then
+		return C_ChatInfo.SendAddonMessage(coolstats.UPDATE_CENTER_PREFIX, message, channel, target)
+	end
+	if SendAddonMessage then
+		return SendAddonMessage(coolstats.UPDATE_CENTER_PREFIX, message, channel, target)
+	end
+	return false
+end
+
+function coolstats.RegisterUpdateCenterPrefix()
+	if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+		C_ChatInfo.RegisterAddonMessagePrefix(coolstats.UPDATE_CENTER_PREFIX)
+	elseif RegisterAddonMessagePrefix then
+		RegisterAddonMessagePrefix(coolstats.UPDATE_CENTER_PREFIX)
+	end
+end
+
+function coolstats.GetUpdateCenterDisplayName(name)
+	local value = tostring(name or "")
+	value = gsub(value, "%-.+$", "")
+	value = gsub(value, "^%s+", "")
+	value = gsub(value, "%s+$", "")
+	if value == "" then
+		return nil
+	end
+	return value
+end
+
+function coolstats.NormalizeUpdateCenterPlayerName(name)
+	local value = coolstats.GetUpdateCenterDisplayName(name) or ""
+	return lower(value)
+end
+
+function coolstats.AddUpdateCenterRosterName(roster, name)
+	if type(roster) ~= "table" then
+		return
+	end
+	local displayName = coolstats.GetUpdateCenterDisplayName(name)
+	if not displayName then
+		return
+	end
+	local key = coolstats.NormalizeUpdateCenterPlayerName(displayName)
+	if key == "" or roster.byKey[key] then
+		return
+	end
+	roster.byKey[key] = displayName
+	roster.order[#roster.order + 1] = key
+	roster.total = (roster.total or 0) + 1
+end
+
+function coolstats.CollectUpdateCenterGroupRoster(channel)
+	local roster = { byKey = {}, order = {}, total = 0 }
+	if channel == "RAID" then
+		local count = GetNumRaidMembers and (GetNumRaidMembers() or 0) or 0
+		for index = 1, count do
+			local name = GetRaidRosterInfo and GetRaidRosterInfo(index)
+			coolstats.AddUpdateCenterRosterName(roster, name)
+		end
+	elseif channel == "PARTY" then
+		local count = GetNumPartyMembers and (GetNumPartyMembers() or 0) or 0
+		for index = 1, count do
+			local name = UnitName and UnitName("party" .. tostring(index))
+			coolstats.AddUpdateCenterRosterName(roster, name)
+		end
+	end
+	local playerName = UnitName and UnitName("player")
+	coolstats.AddUpdateCenterRosterName(roster, playerName)
+	return roster
+end
+
+function coolstats.GetUpdateCenterDataAgeText(ageDays)
+	local age = tonumber(ageDays)
+	if age then
+		return tostring(age) .. "d"
+	end
+	return "?d"
+end
+
+function coolstats.GetUpdateCenterRequestId()
+	coolstats.updateCenterRequestSerial = (coolstats.updateCenterRequestSerial or 0) + 1
+	local now = coolstats.GetSessionSeconds()
+	return tostring(floor(now * 1000)) .. "-" .. tostring(coolstats.updateCenterRequestSerial)
+end
+
+function coolstats.PrintUpdateCenterNameChunks(prefix, names)
+	if type(names) ~= "table" or #names == 0 then
+		return
+	end
+	local line = tostring(prefix or "")
+	for index = 1, #names do
+		local name = tostring(names[index] or "")
+		local separator = line == tostring(prefix or "") and " " or ", "
+		local addition = separator .. name
+		if string.len(line) + string.len(addition) > 180 then
+			Print(line)
+			line = tostring(prefix or "") .. " " .. name
+		else
+			line = line .. addition
+		end
+	end
+	if line ~= tostring(prefix or "") then
+		Print(line)
+	end
+end
+
+function coolstats.ParseVersion(version)
+	local parts = {}
+	for part in string.gmatch(tostring(version or ""), "%d+") do
+		parts[#parts + 1] = tonumber(part) or 0
+	end
+	return parts
+end
+
+function coolstats.IsVersionNewer(currentVersion, candidateVersion)
+	local current = coolstats.ParseVersion(currentVersion)
+	local candidate = coolstats.ParseVersion(candidateVersion)
+	local length = math.max(#current, #candidate)
+	for index = 1, length do
+		local currentPart = current[index] or 0
+		local candidatePart = candidate[index] or 0
+		if candidatePart > currentPart then
+			return true
+		elseif candidatePart < currentPart then
+			return false
+		end
+	end
+	return false
+end
+
+function coolstats.GetAddonVersion()
+	local version = GetAddOnMetadata and GetAddOnMetadata(ADDON_NAME, "Version")
+	if type(version) ~= "string" or version == "" then
+		return "0.0.0"
+	end
+	return version
+end
+
+function coolstats.GetUpdateCenterState()
+	if not db then
+		return nil
+	end
+	if type(db.updateCenter) ~= "table" then
+		db.updateCenter = {}
+	end
+	if type(db.updateCenter.peers) ~= "table" then
+		db.updateCenter.peers = {}
+	end
+	return db.updateCenter
+end
+
+function coolstats.GetUpdateCenterInfo()
+	local state = coolstats.GetUpdateCenterState() or {}
+	local generatedAt = coolstatsUwUData and coolstatsUwUData.generatedAt or ""
+	local freshness = coolstats.FormatCachedPlayerBrowserGeneratedAt and coolstats.FormatCachedPlayerBrowserGeneratedAt() or "Last UwU logs refresh: unknown"
+	local ageDays = coolstats.GetUwULogsDataAgeDays and coolstats.GetUwULogsDataAgeDays()
+	return {
+		addonVersion = coolstats.GetAddonVersion(),
+		generatedAt = generatedAt,
+		freshness = freshness,
+		ageDays = ageDays,
+		isDataStale = ageDays and ageDays > 7,
+		knownLatestVersion = state.knownLatestVersion,
+		knownLatestVersionBy = state.knownLatestVersionBy,
+		knownLatestGeneratedAt = state.knownLatestGeneratedAt,
+		knownLatestGeneratedAtBy = state.knownLatestGeneratedAtBy,
+	}
+end
+
+function coolstats.GetUpdateCenterStatusPayload()
+	local info = coolstats.GetUpdateCenterInfo()
+	local age = info.ageDays and tostring(info.ageDays) or "?"
+	return tostring(info.addonVersion or "") .. "::" .. tostring(info.generatedAt or "") .. "::" .. age
+end
+
+function coolstats.GetUpdateCenterStatusMessage()
+	return "STATUS::" .. coolstats.GetUpdateCenterStatusPayload()
+end
+
+function coolstats.PrintUpdateLinks()
+	Print("Repository: " .. coolstats.UPDATE_CENTER_WARPERIA_URL)
+	Print("Latest release: " .. coolstats.UPDATE_CENTER_GITHUB_URL)
+end
+
+function coolstats.OpenUpdateCenter()
+	if CloseDropDownMenus then
+		CloseDropDownMenus()
+	end
+	if coolstats.ShowUpdateCenter then
+		coolstats.ShowUpdateCenter()
+	else
+		local info = coolstats.GetUpdateCenterInfo()
+		Print("Version " .. tostring(info.addonVersion or "unknown") .. ". " .. tostring(info.freshness or "Last UwU logs refresh: unknown"))
+		coolstats.PrintUpdateLinks()
+	end
+end
+
+function coolstats.RemindUpdateCenter(message)
+	local state = coolstats.GetUpdateCenterState()
+	local now = coolstats.GetClockSeconds()
+	if state and state.lastReminderAt and now - state.lastReminderAt < coolstats.UPDATE_CENTER_REMINDER_SECONDS then
+		return
+	end
+	if state then
+		state.lastReminderAt = now
+	end
+	Print("|cffff4040" .. tostring(message) .. "|r")
+	Print("Run |cff00c0ff/cs update|r for Rising Gods release links.")
+end
+
+function coolstats.RecordUpdateCenterRequestPeer(sender, channel, version, generatedAt, ageDays, requestId)
+	local request = coolstats.updateCenterRequest
+	if not request or request.untilTime <= coolstats.GetSessionSeconds() then
+		return
+	end
+	if request.id and requestId and request.id ~= requestId then
+		return
+	end
+	local displayName = coolstats.GetUpdateCenterDisplayName(sender)
+	if not displayName then
+		return
+	end
+	local key = coolstats.NormalizeUpdateCenterPlayerName(displayName)
+	if key == "" then
+		return
+	end
+	request.responses[key] = {
+		name = displayName,
+		version = version,
+		generatedAt = generatedAt,
+		ageDays = tonumber(ageDays),
+		channel = channel,
+	}
+end
+
+function coolstats.PrintUpdateCenterRequestSummary()
+	local request = coolstats.updateCenterRequest
+	if not request then
+		return
+	end
+	coolstats.updateCenterRequest = nil
+	coolstats.updateCenterRequestUntil = 0
+	local withAddon = {}
+	local noResponse = {}
+	if request.roster and request.roster.order then
+		for index = 1, #request.roster.order do
+			local key = request.roster.order[index]
+			local peer = request.responses[key]
+			if peer then
+				withAddon[#withAddon + 1] = tostring(peer.name or request.roster.byKey[key]) .. " (v" .. tostring(peer.version or "?") .. ", data " .. coolstats.GetUpdateCenterDataAgeText(peer.ageDays) .. ")"
+			else
+				noResponse[#noResponse + 1] = tostring(request.roster.byKey[key] or key)
+			end
+		end
+	else
+		for _, peer in pairs(request.responses) do
+			withAddon[#withAddon + 1] = tostring(peer.name or "unknown") .. " (v" .. tostring(peer.version or "?") .. ", data " .. coolstats.GetUpdateCenterDataAgeText(peer.ageDays) .. ")"
+		end
+	end
+	table.sort(withAddon)
+	table.sort(noResponse)
+	if request.roster and request.roster.total then
+		Print("Version check results for " .. lower(tostring(request.channel or "group")) .. ": " .. tostring(#withAddon) .. "/" .. tostring(request.roster.total) .. " responded.")
+	else
+		Print("Version check results for " .. lower(tostring(request.channel or "guild")) .. ": " .. tostring(#withAddon) .. " response(s).")
+	end
+	for index = 1, #withAddon do
+		Print(withAddon[index])
+	end
+	coolstats.PrintUpdateCenterNameChunks("No coolstats installed:", noResponse)
+end
+
+function coolstats.StartUpdateCenterRequestTimer()
+	if not CreateFrame then
+		return
+	end
+	if not coolstats.updateCenterRequestFrame then
+		coolstats.updateCenterRequestFrame = CreateFrame("Frame")
+	end
+	coolstats.updateCenterRequestFrame:SetScript("OnUpdate", function(self)
+		local request = coolstats.updateCenterRequest
+		if not request then
+			self:SetScript("OnUpdate", nil)
+			return
+		end
+		if coolstats.GetSessionSeconds() >= request.untilTime then
+			self:SetScript("OnUpdate", nil)
+			coolstats.PrintUpdateCenterRequestSummary()
+		end
+	end)
+end
+
+function coolstats.RecordUpdateCenterPeer(sender, channel, version, generatedAt, ageDays, requestId)
+	local state = coolstats.GetUpdateCenterState()
+	if not state then
+		return
+	end
+	local key = coolstats.GetUpdateCenterDisplayName(sender) or tostring(sender or "unknown")
+	if key == "" then
+		key = "unknown"
+	end
+	state.peers[key] = {
+		version = version,
+		generatedAt = generatedAt,
+		ageDays = tonumber(ageDays),
+		channel = channel,
+		seenAt = coolstats.GetClockSeconds(),
+	}
+	local myVersion = coolstats.GetAddonVersion()
+	if coolstats.IsVersionNewer(myVersion, version) then
+		if not state.knownLatestVersion or coolstats.IsVersionNewer(state.knownLatestVersion, version) then
+			state.knownLatestVersion = version
+			state.knownLatestVersionBy = key
+		end
+		coolstats.RemindUpdateCenter("New coolstats version " .. tostring(version) .. " seen from " .. key .. ".")
+	end
+	local myGeneratedAt = coolstatsUwUData and coolstatsUwUData.generatedAt or ""
+	if type(generatedAt) == "string" and generatedAt ~= "" and generatedAt > tostring(myGeneratedAt or "") then
+		if not state.knownLatestGeneratedAt or generatedAt > state.knownLatestGeneratedAt then
+			state.knownLatestGeneratedAt = generatedAt
+			state.knownLatestGeneratedAtBy = key
+		end
+		coolstats.RemindUpdateCenter("Newer coolstats log data seen from " .. key .. ".")
+	end
+	coolstats.RecordUpdateCenterRequestPeer(sender, channel, version, generatedAt, ageDays, requestId)
+	if not coolstats.updateCenterRequest and coolstats.updateCenterRequestUntil > coolstats.GetSessionSeconds() then
+		local ageText = tonumber(ageDays) and (tostring(ageDays) .. "d") or "?d"
+		Print(tostring(key) .. " " .. tostring(channel or "") .. ": v" .. tostring(version or "?") .. " data " .. ageText)
+	end
+	if coolstats.updateCenterDialog and coolstats.updateCenterDialog:IsShown() and coolstats.UpdateUpdateCenterDialog then
+		coolstats.UpdateUpdateCenterDialog(coolstats.updateCenterDialog)
+	end
+end
+
+function coolstats.BroadcastUpdateCenterStatus(force)
+	local now = coolstats.GetSessionSeconds()
+	if not force and now - coolstats.updateCenterLastBroadcastAt < coolstats.UPDATE_CENTER_BROADCAST_SECONDS then
+		return
+	end
+	coolstats.updateCenterLastBroadcastAt = now
+	local message = coolstats.GetUpdateCenterStatusMessage()
+	local groupChannel = coolstats.GetGroupAddonChannel()
+	if groupChannel then
+		coolstats.SendUpdateCenterAddonMessage(message, groupChannel)
+	end
+end
+
+function coolstats.RequestUpdateCenterVersions(scope)
+	scope = lower(tostring(scope or ""))
+	local channel = nil
+	local roster = nil
+	if scope == "guild" then
+		Print("Guild checks are disabled. Join a raid or party and run /cs versioncheck.")
+		return
+	end
+	channel = coolstats.GetGroupAddonChannel()
+	if not channel then
+		Print("Not in a group.")
+		return
+	end
+	roster = coolstats.CollectUpdateCenterGroupRoster(channel)
+	local now = coolstats.GetSessionSeconds()
+	local requestId = coolstats.GetUpdateCenterRequestId()
+	coolstats.updateCenterRequestUntil = now + coolstats.UPDATE_CENTER_REQUEST_RESULTS_SECONDS
+	coolstats.updateCenterRequest = {
+		id = requestId,
+		channel = channel,
+		roster = roster,
+		responses = {},
+		untilTime = coolstats.updateCenterRequestUntil,
+	}
+	local playerName = UnitName and UnitName("player") or "You"
+	local info = coolstats.GetUpdateCenterInfo()
+	coolstats.RecordUpdateCenterPeer(playerName, "SELF", info.addonVersion, info.generatedAt, info.ageDays, requestId)
+	coolstats.SendUpdateCenterAddonMessage("REQ::" .. requestId, channel)
+	coolstats.SendUpdateCenterAddonMessage("REQUEST", channel)
+	coolstats.StartUpdateCenterRequestTimer()
+	Print("Version check sent to " .. string.lower(channel) .. ".")
+end
+
+function coolstats.HandleUpdateCenterAddonMessage(prefix, message, channel, sender)
+	if prefix ~= coolstats.UPDATE_CENTER_PREFIX or type(message) ~= "string" then
+		return
+	end
+	if message == "REQUEST" then
+		if sender and sender ~= "" then
+			coolstats.SendUpdateCenterAddonMessage(coolstats.GetUpdateCenterStatusMessage(), "WHISPER", sender)
+		else
+			coolstats.SendUpdateCenterAddonMessage(coolstats.GetUpdateCenterStatusMessage(), channel)
+		end
+		return
+	end
+	local requestId = string.match(message, "^REQ::(.+)$")
+	if requestId then
+		if sender and sender ~= "" then
+			coolstats.SendUpdateCenterAddonMessage("RES::" .. requestId .. "::" .. coolstats.GetUpdateCenterStatusPayload(), "WHISPER", sender)
+		else
+			coolstats.SendUpdateCenterAddonMessage("RES::" .. requestId .. "::" .. coolstats.GetUpdateCenterStatusPayload(), channel)
+		end
+		return
+	end
+	local responseId, responseVersion, responseGeneratedAt, responseAgeDays = string.match(message, "^RES::(.-)::(.-)::(.-)::(.*)$")
+	if responseId then
+		coolstats.RecordUpdateCenterPeer(sender, channel, responseVersion, responseGeneratedAt, responseAgeDays, responseId)
+		return
+	end
+	local version, generatedAt, ageDays = string.match(message, "^STATUS::(.-)::(.-)::(.*)$")
+	if version then
+		coolstats.RecordUpdateCenterPeer(sender, channel, version, generatedAt, ageDays)
+	end
+end
+
 function coolstats.AddMinimapMenuButton(text, func, disabled, isTitle)
 	if not UIDropDownMenu_CreateInfo or not UIDropDownMenu_AddButton then
 		return
@@ -646,6 +1112,7 @@ function coolstats.InitializeMinimapMenu()
 		coolstats.PositionMinimapButton()
 	end)
 	coolstats.AddMinimapMenuButton("Logs Browser", coolstats.OpenCachedPlayerBrowserFromMinimap)
+	coolstats.AddMinimapMenuButton("Update Center", coolstats.OpenUpdateCenter)
 	coolstats.AddMinimapMenuButton("Settings", coolstats.OpenSettingsFromMinimap)
 	coolstats.AddMinimapMenuButton(CLOSE or "Close", function()
 		if CloseDropDownMenus then
@@ -805,6 +1272,14 @@ function coolstats.CreateMinimapButton()
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("coolstats", 0.0, 0.75, 1.0)
+		local info = coolstats.GetUpdateCenterInfo and coolstats.GetUpdateCenterInfo()
+		if info then
+			GameTooltip:AddLine("Version: " .. tostring(info.addonVersion or "unknown"), 0.86, 0.86, 0.78)
+			GameTooltip:AddLine(tostring(info.freshness or "Last UwU logs refresh: unknown"), info.isDataStale and 1 or 0.58, info.isDataStale and 0.25 or 0.76, info.isDataStale and 0.25 or 0.86, true)
+			if info.knownLatestVersion and coolstats.IsVersionNewer and coolstats.IsVersionNewer(info.addonVersion, info.knownLatestVersion) then
+				GameTooltip:AddLine("New version seen: " .. tostring(info.knownLatestVersion), 1, 0.25, 0.25)
+			end
+		end
 		GameTooltip:AddLine("Left-click: Player Browser", 0.86, 0.86, 0.78)
 		GameTooltip:AddLine("Right-click: Menu", 0.86, 0.86, 0.78)
 		GameTooltip:AddLine("Drag: Move button", 0.86, 0.86, 0.78)
@@ -5848,6 +6323,8 @@ local function ShowHelp()
 	Print("/coolstats or /cs - open settings")
 	Print("/coolstats settings - open settings")
 	Print("/coolstats browser - open the player browser")
+	Print("/coolstats update - open update links and data status")
+	Print("/coolstats versioncheck - ask your raid or party for coolstats versions")
 	Print("/coolstats uwu [player name] - open UwU Logs for a player")
 	Print("/coolstats cachedebug [player name] - print cached gear/talent diagnostics")
 end
@@ -5868,6 +6345,10 @@ local function SlashHandler(message)
 		else
 			Print("Player browser is not available.")
 		end
+	elseif commandLower == "update" or commandLower == "updates" then
+		coolstats.OpenUpdateCenter()
+	elseif commandLower == "versioncheck" then
+		coolstats.RequestUpdateCenterVersions(rest)
 	elseif commandLower == "uwu" then
 		local name = rest
 		if not name or name == "" then
@@ -5934,7 +6415,12 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 		SLASH_COOLSTATS2 = "/cs"
 		SlashCmdList.COOLSTATS = SlashHandler
 
+		coolstats.RegisterUpdateCenterPrefix()
 		SafeRegisterEvent(self, "PLAYER_LOGIN")
+		SafeRegisterEvent(self, "CHAT_MSG_ADDON")
+		SafeRegisterEvent(self, "PARTY_MEMBERS_CHANGED")
+		SafeRegisterEvent(self, "RAID_ROSTER_UPDATE")
+		SafeRegisterEvent(self, "GROUP_ROSTER_UPDATE")
 		if coolstats.IsCharacterPanelEnabled() then
 			SafeRegisterEvent(self, "PLAYER_ENTERING_WORLD")
 			SafeRegisterEvent(self, "PLAYER_EQUIPMENT_CHANGED")
@@ -5959,6 +6445,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 		return
 	end
 
+	if event == "CHAT_MSG_ADDON" then
+		coolstats.HandleUpdateCenterAddonMessage(arg1, arg2, arg3, arg4)
+		return
+	end
+
+	if event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" or event == "GROUP_ROSTER_UPDATE" then
+		coolstats.BroadcastUpdateCenterStatus(false, false)
+		return
+	end
+
 	if event == "PLAYER_LOGIN" then
 		if coolstats.EnsureRealmDataLoaded then
 			coolstats.EnsureRealmDataLoaded()
@@ -5969,10 +6465,11 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 		local dataAgeDays = coolstats.GetUwULogsDataAgeDays and coolstats.GetUwULogsDataAgeDays()
 		if dataAgeDays and dataAgeDays > 7 then
 			local ageLabel = tostring(dataAgeDays) .. (dataAgeDays == 1 and " day" or " days")
-			Print("|cff00ff00Loaded successfully.|r |cffff4040" .. freshness .. ". Please update your addon; parse data is outdated by " .. ageLabel .. ".|r")
+			Print("|cff00ff00Loaded successfully.|r |cffff4040" .. freshness .. ". Please update your addon; parse data is outdated by " .. ageLabel .. ". Run /cs update for links.|r")
 		else
 			Print("|cff00ff00Loaded successfully.|r " .. freshness)
 		end
+		coolstats.BroadcastUpdateCenterStatus(true)
 		return
 	end
 

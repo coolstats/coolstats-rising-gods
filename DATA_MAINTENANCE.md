@@ -36,7 +36,7 @@ addon `coolstats_Data_RisingGods`.
 .\tools\update_rising_gods.ps1 -Mode Validate
 .\tools\update_rising_gods.ps1 -Mode Weekly
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.29-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg1
 ```
 
 Generated runtime data:
@@ -54,7 +54,7 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.29-rg1`.
+- Tag releases as `v<version>`, for example `v0.2.34-rg1`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane
