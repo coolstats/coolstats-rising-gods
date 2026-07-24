@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.34-rg2 - 2026-07-24
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs on 2026-07-24.
+- Expanded the weekly ranked pull from 400 to 600 players per class/spec.
+- Bundled 10,075 active ranked players across the 13 configured ICC-era
+  encounters.
+- Completed 390 bulk boss requests with 129,436 bundled boss rows, no failed
+  requests, and no boss-only players added.
+- Added a targeted post-bulk character-profile repair path and used it to
+  restore Pentendo's complete available boss parse set.
+
+### Updater safety
+
+- Hardened bulk boss refreshes so a transient partial bulk response cannot
+  shrink an already cached player's boss rows.
+- Added tests for the cached-boss merge behavior and the Rising Gods weekly
+  refresh defaults.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg2`.
+
 ## 0.2.34-rg1 - 2026-07-24
 
 ### Core sync

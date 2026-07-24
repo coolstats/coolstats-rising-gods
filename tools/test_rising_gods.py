@@ -111,6 +111,42 @@ class RisingGodsTests(unittest.TestCase):
         self.assertEqual(set(updates), {"rankedone"})
         self.assertEqual(names, {"rankedone": "RankedOne"})
 
+    def test_bulk_boss_merge_keeps_cached_rows_when_refresh_is_partial(self):
+        current = player(name="Pentendo", class_i=3, spec_i=2, score=9619)
+        refreshed = {
+            2: {
+                "Lord Marrowgar": {
+                    "score_centi": 9951,
+                    "rank_players": 50,
+                    "rank_raids": 129,
+                    "dps": 22459.53,
+                }
+            }
+        }
+        cache_entries = {
+            "pentendo:2": {
+                "name": "Pentendo",
+                "spec_i": 2,
+                "bosses": {
+                    "Lord Marrowgar": {
+                        "score_centi": 9000,
+                        "rank_players": 100,
+                        "rank_raids": 300,
+                        "dps": 20000,
+                    },
+                    "The Lich King": {
+                        "score_centi": 9745,
+                        "rank_players": 67,
+                        "rank_raids": 283,
+                        "dps": 15565.86,
+                    },
+                },
+            }
+        }
+        merged = uwu.merge_cached_spec_bosses(current, refreshed, cache_entries)
+        self.assertEqual(merged[2]["Lord Marrowgar"]["score_centi"], 9951)
+        self.assertEqual(merged[2]["The Lich King"]["score_centi"], 9745)
+
     def test_rising_gods_profile_is_ranked_player_only(self):
         profile = uwu.configure_realm_profile("Rising-Gods", "icc")
         self.assertIs(profile["preserve_previous_players"], False)
@@ -122,7 +158,7 @@ class RisingGodsTests(unittest.TestCase):
             for chunk in sorted((REPOSITORY_ROOT / "realm_data" / "coolstats_Data_RisingGods" / "data" / "logs" / "icc").glob("coolstats_uwu_data_*.lua"))
         )
         player_rows = re.findall(r'^\s+\["[^"]+"\]\s=', chunks, flags=re.MULTILINE)
-        self.assertLess(len(player_rows), 10000)
+        self.assertLess(len(player_rows), 12000)
         self.assertNotRegex(chunks, r'", 0, \d+, \d+, nil,')
 
     def test_loader_and_ui_are_rising_gods_specific(self):
@@ -146,6 +182,18 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn('$expectedRealmAddonName = "coolstats_Data_RisingGods"', package_script)
         self.assertIn("Refusing to package non-Rising-Gods realm data", package_script)
         self.assertIn("coolstats_rising_gods_{0}.zip", package_script)
+
+    def test_weekly_script_expands_coverage_and_supports_targeted_boss_repair(self):
+        update_script = (
+            REPOSITORY_ROOT / "tools" / "update_rising_gods.ps1"
+        ).read_text(encoding="utf-8")
+        updater = (REPOSITORY_ROOT / "tools" / "update_uwu_logs.py").read_text(encoding="utf-8")
+        self.assertIn("[int]$MaxPerSpec = 600", update_script)
+        self.assertIn("DEFAULT_MAX_PER_SPEC = 600", updater)
+        self.assertIn("[string[]]$BossName", update_script)
+        self.assertIn('"--boss-name"', update_script)
+        self.assertIn("targeted character boss repair after bulk mode", updater)
+        self.assertNotIn("boss-name is only used by --character-bosses", updater)
 
     def test_warmane_realm_directories_are_absent(self):
         realm_root = REPOSITORY_ROOT / "realm_data"

@@ -21,22 +21,27 @@ addon `coolstats_Data_RisingGods`.
 4. A full boss refresh must abort if a configured encounter returns no rows.
 5. Boss records remain separated by specialization.
 6. Boss leaderboards may enrich ranked players, but must not create rankless boss-only records.
-7. Generated Lua is committed; raw JSON and cache files remain local and ignored.
-8. The release archive must contain only the core, cache, and Rising Gods data addons.
-9. Never point these scripts at the Warmane repository or its release directory.
-10. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
-11. Lua 5.1 validation must pass before packaging or publishing a release.
-12. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
-13. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
-14. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
+7. Bulk boss refreshes must merge with existing cached boss rows so a partial
+   bulk response cannot shrink a player's available boss parses.
+8. Use `-BossName <character>` with weekly refreshes when a specific player's
+   UwU character page needs targeted boss-log repair after the bulk pull.
+9. Generated Lua is committed; raw JSON and cache files remain local and ignored.
+10. The release archive must contain only the core, cache, and Rising Gods data addons.
+11. Never point these scripts at the Warmane repository or its release directory.
+12. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
+13. Lua 5.1 validation must pass before packaging or publishing a release.
+14. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
+15. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
+16. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
 
 ## Commands
 
 ```powershell
 .\tools\update_rising_gods.ps1 -Mode Validate
 .\tools\update_rising_gods.ps1 -Mode Weekly
+.\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg2
 ```
 
 Generated runtime data:
@@ -54,7 +59,7 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.34-rg1`.
+- Tag releases as `v<version>`, for example `v0.2.34-rg2`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane

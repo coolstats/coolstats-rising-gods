@@ -31,7 +31,7 @@ scripts, releases, and GitHub history are maintained independently here.
 The game addon performs no web requests. UwU Logs data is generated outside the
 game and bundled into each release.
 
-Current `0.2.34-rg1` data was refreshed on 2026-07-24 and includes 7,429
+Current `0.2.34-rg2` data was refreshed on 2026-07-24 and includes 10,075
 ranked players across the 13 configured Rising Gods encounters.
 
 ## Installation
@@ -78,8 +78,11 @@ Scripts are tracked in `tools/`:
 # The generated package stays limited to ranked players.
 .\tools\update_rising_gods.ps1 -Mode Weekly
 
+# Refresh weekly data and force a targeted character-profile boss repair.
+.\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
+
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg2
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for safety rules.

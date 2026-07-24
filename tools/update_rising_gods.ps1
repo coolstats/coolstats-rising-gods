@@ -2,9 +2,11 @@ param(
 	[ValidateSet("Validate", "Scores", "Weekly")]
 	[string]$Mode = "Validate",
 
-	[int]$MaxPerSpec = 400,
+	[int]$MaxPerSpec = 600,
 
 	[int]$BulkTopLimit = 10000,
+
+	[string[]]$BossName = @(),
 
 	[int]$Timeout = 45,
 
@@ -46,6 +48,12 @@ switch ($Mode) {
 			"--max-per-spec", $MaxPerSpec,
 			"--bulk-top-limit", $BulkTopLimit
 		)
+	}
+}
+
+foreach ($name in $BossName) {
+	if (-not [string]::IsNullOrWhiteSpace($name)) {
+		$arguments += @("--boss-name", $name)
 	}
 }
 

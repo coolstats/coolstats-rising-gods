@@ -35,6 +35,7 @@ ADDON_ROOT = REPO_ROOT if (REPO_ROOT / "coolstats.toc").is_file() else REPO_ROOT
 DEFAULT_BOSS_CACHE_DIR = ADDON_ROOT / "data"
 DEFAULT_WEEKLY_BOSS_MAX_AGE_DAYS = 1
 DEFAULT_MIN_PLAYERS = 6000
+DEFAULT_MAX_PER_SPEC = 600
 DEFAULT_BULK_TOP_LIMIT = 10000
 DEFAULT_BULK_CHECKPOINT_EVERY = 10
 LUA_PLAYER_CHUNK_COUNT = 6
@@ -589,6 +590,29 @@ def find_boss_cache_entry(cache_entries: dict, player: dict, allow_name_fallback
         if entry_key.startswith(name_prefix):
             return entry_key, candidate
     return cache_key, None
+
+
+def merge_cached_spec_bosses(player: dict, refreshed_spec_bosses: dict, cache_entries: dict | None) -> dict:
+    if not cache_entries:
+        return refreshed_spec_bosses
+    for spec_i in sorted(player.get("specs") or {player.get("best_spec_i"): True}):
+        if spec_i is None:
+            continue
+        cache_key = get_boss_cache_key_for_spec(player, spec_i)
+        cached = cache_entries.get(cache_key)
+        if not cached or not isinstance(cached.get("bosses"), dict):
+            continue
+        cached_bosses = {
+            boss_name: boss
+            for boss_name, boss in cached["bosses"].items()
+            if isinstance(boss, dict)
+        }
+        if not cached_bosses:
+            continue
+        merged = dict(cached_bosses)
+        merged.update(refreshed_spec_bosses.get(spec_i) or {})
+        refreshed_spec_bosses[spec_i] = merged
+    return refreshed_spec_bosses
 
 
 def summarize_active_boss_cache(data: dict, cache_entries: dict | None, max_age_days: float | None) -> dict:
@@ -1282,6 +1306,7 @@ def add_bulk_top_bosses(
     if failed == 0:
         for key, player in players.items():
             refreshed_spec_bosses = staged_bosses.get(key, {})
+            merge_cached_spec_bosses(player, refreshed_spec_bosses, cache_entries)
             if RETAINED_BOSSES:
                 for spec_i, existing_bosses in (player.get("spec_bosses") or {}).items():
                     retained = {
@@ -1736,13 +1761,13 @@ def validate_realm_profile(server: str, timeout: int, retries: int, sleep: float
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--weekly", action="store_true", help="Run the weekly update: top 400 per spec plus bulk boss leaderboards.")
+    parser.add_argument("--weekly", action="store_true", help="Run the weekly update: top players per spec plus bulk boss leaderboards.")
     parser.add_argument("--weekly-full", action="store_true", help="Alias for --weekly; kept for older command history.")
     parser.add_argument("--validate-profile", action="store_true", help="Validate the configured realm boss roster and modes without writing data.")
     parser.add_argument("--server", default="Rising-Gods")
     parser.add_argument("--phase", default=None, help="Use a prepared phase profile instead of the realm's active phase (for example: --server Onyxia --phase toc).")
     parser.add_argument("--activate-phase", action="store_true", help="Rewrite the realm data addon's manifest for the selected phase. Required when promoting a staged phase.")
-    parser.add_argument("--max-per-spec", "--max-per-class", dest="max_per_spec", type=int, default=400)
+    parser.add_argument("--max-per-spec", "--max-per-class", dest="max_per_spec", type=int, default=DEFAULT_MAX_PER_SPEC)
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--sleep", type=float, default=0.05)
@@ -1751,7 +1776,7 @@ def main() -> int:
     parser.add_argument("--bulk-top-limit", type=int, default=DEFAULT_BULK_TOP_LIMIT, choices=[10, 100, 1000, 10000, 50000])
     parser.add_argument("--bulk-checkpoint-every", type=int, default=DEFAULT_BULK_CHECKPOINT_EVERY)
     parser.add_argument("--boss-workers", type=int, default=1)
-    parser.add_argument("--boss-limit", type=int, default=None, help="Maximum character-detail requests; only applies with --character-bosses.")
+    parser.add_argument("--boss-limit", type=int, default=None, help="Maximum character-detail requests; applies with --character-bosses or targeted post-bulk repair.")
     parser.add_argument("--character-timeout", type=int, default=12)
     parser.add_argument("--character-retries", type=int, default=1)
     parser.add_argument("--character-sleep", type=float, default=1.0)
@@ -1868,10 +1893,8 @@ def main() -> int:
                 boss_targets,
             )
         else:
-            if boss_targets:
-                log("note: --boss-name is only used by --character-bosses; bulk mode refreshes every active top player")
             if args.boss_limit is not None:
-                log("note: --boss-limit is ignored in bulk mode")
+                log("note: --boss-limit is only used by targeted character repair after bulk mode")
             add_bulk_top_bosses(
                 args.server,
                 data,
@@ -1882,13 +1905,29 @@ def main() -> int:
                 args.bulk_top_limit,
                 args.bulk_checkpoint_every,
             )
-            missing_encounters = data.get("missing_boss_encounters") or []
-            if missing_encounters:
-                log(
-                    "error: refusing to write realm data because these configured encounters "
-                    f"returned no leaderboard rows: {', '.join(missing_encounters)}"
+            if boss_targets:
+                target_limit = args.boss_limit or len(boss_targets)
+                log("targeted character boss repair after bulk mode: " + ", ".join(sorted(boss_targets)))
+                add_character_bosses(
+                    args.server,
+                    data,
+                    args.character_timeout,
+                    args.character_retries,
+                    args.boss_workers,
+                    target_limit,
+                    boss_cache,
+                    args.character_sleep,
+                    True,
+                    None,
+                    boss_targets,
                 )
-                return 1
+        missing_encounters = data.get("missing_boss_encounters") or []
+        if missing_encounters:
+            log(
+                "error: refusing to write realm data because these configured encounters "
+                f"returned no leaderboard rows: {', '.join(missing_encounters)}"
+            )
+            return 1
     boss_cache_entries = None
     if boss_cache:
         boss_cache_entries = load_boss_cache(boss_cache, args.server).get("entries")
