@@ -19,6 +19,7 @@ $textExtensions = @{
 	".md" = $true
 	".ps1" = $true
 	".py" = $true
+	".sh" = $true
 	".toc" = $true
 	".txt" = $true
 	".xml" = $true

@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Cache
 ## Notes: Isolated cached gear and talent snapshots for coolstats.
 ## Author: coolstats
-## Version: 0.2.34-rg3
+## Version: 0.2.34-rg4
 ## SavedVariables: coolstatsCacheDB
 
 coolstats_Cache.lua

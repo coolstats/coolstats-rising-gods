@@ -164,19 +164,27 @@ if (Test-Path -LiteralPath $zipPath) {
 	Remove-Item -LiteralPath $zipPath -Force
 }
 
-$rootUpdater = Join-Path $publishPath "Update_Rising_Gods_Logs.bat"
-if (-not (Test-Path -LiteralPath $rootUpdater)) {
-	throw "Missing public updater launcher: $rootUpdater"
+$rootLaunchers = @(
+	"Update_Rising_Gods_Logs.bat",
+	"Update_Rising_Gods_Logs.sh"
+)
+foreach ($launcher in $rootLaunchers) {
+	$rootUpdater = Join-Path $publishPath $launcher
+	if (-not (Test-Path -LiteralPath $rootUpdater)) {
+		throw "Missing public updater launcher: $rootUpdater"
+	}
+	Copy-Item -LiteralPath $rootUpdater -Destination (Join-Path $stageRoot $launcher) -Force
 }
-Copy-Item -LiteralPath $rootUpdater -Destination (Join-Path $stageRoot "Update_Rising_Gods_Logs.bat") -Force
 
 $updaterStage = Join-Path $stageRoot "coolstats_LogUpdater\tools"
 New-Item -ItemType Directory -Path $updaterStage -Force | Out-Null
 $updaterFiles = @(
 	"update_rising_gods_live_logs.ps1",
+	"update_rising_gods_live_logs.py",
 	"update_rising_gods.ps1",
 	"update_uwu_logs.py",
 	"test_rising_gods_data_integrity.ps1",
+	"test_rising_gods_data_integrity.py",
 	"validate_lua51.ps1"
 )
 foreach ($file in $updaterFiles) {

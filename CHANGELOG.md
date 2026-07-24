@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.34-rg4 - 2026-07-24
+
+### Public log updater
+
+- Added `Update_Rising_Gods_Logs.sh` as a Linux/Bazzite/Ubuntu/SteamOS-friendly
+  launcher for refreshing Rising Gods data without PowerShell.
+- Added a cross-platform Python live updater and data integrity audit so Linux
+  users get the same confirmation, progress, staging, backup, validation, and
+  data-only install flow as the Windows BAT.
+- Labeled the public launchers as Windows / PowerShell and Linux / Bash in the
+  updater shell UI so the two entry points are easy to tell apart.
+- Updated release packaging, validation, and privacy scans so the Linux launcher
+  and Python helpers ship with the same no-local-path/no-credential guarantees.
+
+### Documentation
+
+- Rebuilt the README to match the current feature set: player browser boss
+  filters, boss DPS columns, histograms, Statistics drilldowns, Update Center,
+  Rising Gods profile links, public data updaters, commands, privacy, and
+  release layout.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg4`.
+
 ## 0.2.34-rg3 - 2026-07-24
 
 ### Public log updater

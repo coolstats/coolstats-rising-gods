@@ -34,16 +34,24 @@ try {
 		throw "Unexpected top-level addon folders. Expected $($expectedSorted -join ', '); found $($actualFolders -join ', ')."
 	}
 
-	$launcherPath = Join-Path $validationRoot "Update_Rising_Gods_Logs.bat"
-	if (-not (Test-Path -LiteralPath $launcherPath)) {
-		throw "Missing public updater launcher at release root."
+	$requiredLaunchers = @(
+		"Update_Rising_Gods_Logs.bat",
+		"Update_Rising_Gods_Logs.sh"
+	)
+	foreach ($launcher in $requiredLaunchers) {
+		$launcherPath = Join-Path $validationRoot $launcher
+		if (-not (Test-Path -LiteralPath $launcherPath)) {
+			throw "Missing public updater launcher at release root: $launcher"
+		}
 	}
 
 	$requiredUpdaterFiles = @(
 		"update_rising_gods_live_logs.ps1",
+		"update_rising_gods_live_logs.py",
 		"update_rising_gods.ps1",
 		"update_uwu_logs.py",
 		"test_rising_gods_data_integrity.ps1",
+		"test_rising_gods_data_integrity.py",
 		"validate_lua51.ps1"
 	)
 	foreach ($file in $requiredUpdaterFiles) {

@@ -36,14 +36,17 @@ addon `coolstats_Data_RisingGods`.
 
 ## Public data updater
 
-`Update_Rising_Gods_Logs.bat` is the community-facing entry point for local log
-refreshes. It calls `tools/update_rising_gods_live_logs.ps1`, which reuses the
-same UwU updater as official releases.
+`Update_Rising_Gods_Logs.bat` and `Update_Rising_Gods_Logs.sh` are the
+community-facing entry points for local log refreshes. Windows uses
+`tools/update_rising_gods_live_logs.ps1`; Linux/Bazzite/Ubuntu/SteamOS and other
+distros can run the shell launcher with `bash`, which calls
+`tools/update_rising_gods_live_logs.py`. Both paths reuse the same UwU updater
+as official releases.
 
 The public updater must stay auditable and data-only:
 
-- keep it as readable `.bat`, `.ps1`, and `.py` source; do not replace it with a
-  compiled executable unless there is a specific, reviewed need;
+- keep it as readable `.bat`, `.sh`, `.ps1`, and `.py` source; do not replace it
+  with a compiled executable unless there is a specific, reviewed need;
 - do not request administrator rights, credentials, GitHub tokens, or Git
   publishing access;
 - update only `coolstats_Data_RisingGods` in the user's live `Interface\AddOns`
@@ -54,12 +57,12 @@ The public updater must stay auditable and data-only:
   before install;
 - validate the copied live data addon again after replacement, and restore the
   backup if replacement fails;
-- keep the shipped BAT/helper files free of maintainer-local paths, usernames,
-  saved AddOns paths, credentials, and non-`coolstats` GitHub owners;
+- keep the shipped launchers/helper files free of maintainer-local paths,
+  usernames, saved AddOns paths, credentials, and non-`coolstats` GitHub owners;
 - run the release privacy audit before publishing any ZIP;
 - run Lua 5.1 validation when `luac` is available, and make it required only for
   official release packaging.
-- ship the BAT at the release ZIP root and the helper scripts in
+- ship both launchers at the release ZIP root and the helper scripts in
   `coolstats_LogUpdater/tools/` so an extracted release can auto-detect its
   `Interface\AddOns` folder.
 
@@ -71,10 +74,13 @@ The public updater must stay auditable and data-only:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 .\Update_Rising_Gods_Logs.bat
 .\Update_Rising_Gods_Logs.bat -NoInstall
+bash ./Update_Rising_Gods_Logs.sh
+bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -ValidateOnly
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
+python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg3
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg4
 ```
 
 Generated runtime data:
