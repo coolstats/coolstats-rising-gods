@@ -83,6 +83,8 @@ def run_step_labels(validate_only: bool, skip_api_validation: bool, no_install: 
     steps.append("Confirm update plan")
     if not skip_api_validation:
         steps.append("Validate UwU profile")
+    if not no_install:
+        steps.append("Check live AddOns write access")
     steps.extend(["Download UwU logs and rebuild data", "Validate generated data"])
     steps.append("Finish local refresh" if no_install else "Install live data addon")
     steps.append("Finish")
@@ -311,6 +313,28 @@ def optional_lua51_validation(layout: Layout, validation_root: Path, luac_path: 
     print(f"Lua 5.1 validation passed for {len(lua_files)} files.")
 
 
+def assert_addons_write_access(addons_path: Path) -> None:
+    addons_root = addons_path.resolve()
+    probe = assert_child_path(addons_root, f"_coolstats_write_test_{os.getpid()}")
+    try:
+        probe.mkdir(parents=True, exist_ok=True)
+        (probe / "probe.tmp").write_text("ok\n", encoding="ascii")
+    except OSError as exc:
+        raise UpdaterError(
+            "The selected Interface/AddOns folder is not writable: "
+            f"{addons_root}. If World of Warcraft is installed under Program Files "
+            "or another protected location, move the game/addon to a writable folder "
+            "or run the official coolstats updater from an elevated terminal. "
+            f"Original error: {exc}"
+        ) from exc
+    finally:
+        if probe.exists():
+            try:
+                remove_path(probe)
+            except OSError:
+                pass
+
+
 def assert_child_path(root: Path, child_name: str) -> Path:
     if Path(child_name).is_absolute() or "/" in child_name or "\\" in child_name or ".." in child_name:
         raise UpdaterError(f"Unsafe child path: {child_name}")
@@ -340,7 +364,7 @@ def install_data_addon(
     source = source_data_addon.resolve()
     addons_root = addons_path.resolve()
     target = assert_child_path(addons_root, DATA_ADDON_NAME)
-    temp = assert_child_path(addons_root, f"{DATA_ADDON_NAME}.__coolstats_update_tmp")
+    temp = assert_child_path(addons_root, f"{DATA_ADDON_NAME}.__coolstats_update_tmp_{os.getpid()}")
     backup_root = assert_child_path(addons_root, "_coolstats_backups")
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     backup = assert_child_path(backup_root, f"{DATA_ADDON_NAME}_{timestamp}_{os.getpid()}")
@@ -352,12 +376,29 @@ def install_data_addon(
 
     try:
         if temp.exists():
-            remove_path(temp)
-        shutil.copytree(source, temp)
+            try:
+                remove_path(temp)
+            except OSError as exc:
+                raise UpdaterError(
+                    f"Could not clean the previous temporary update folder: {temp}. "
+                    "Close World of Warcraft and any file browser windows using the folder, then try again. "
+                    f"Original error: {exc}"
+                ) from exc
+        try:
+            shutil.copytree(source, temp)
+        except OSError as exc:
+            raise UpdaterError(
+                f"Could not create the temporary update folder: {temp}. "
+                "The operating system may be denying writes to this AddOns folder. "
+                "If it is under Program Files or another protected location, move the game/addon "
+                "to a writable folder or run the official coolstats updater from an elevated terminal. "
+                f"Original error: {exc}"
+            ) from exc
         audit_data_addon(
             temp,
             expected_version=expected_version,
             expected_max_per_spec=expected_max_per_spec,
+            allow_temporary_folder_name=True,
             quiet=True,
         )
 
@@ -455,6 +496,12 @@ def main() -> int:
             no_install=args.no_install,
             yes=args.yes,
         )
+
+        if not args.no_install:
+            if live_addons_path is None:
+                raise UpdaterError("No live AddOns path was resolved.")
+            ui.step("Checking live AddOns write access")
+            assert_addons_write_access(live_addons_path)
 
         generated_data_addon = layout.work_data_addon
         lua_output = generated_data_addon / "data" / "logs" / "icc" / "coolstats_uwu_data.lua"

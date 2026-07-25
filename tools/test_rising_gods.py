@@ -1,6 +1,8 @@
 import importlib.util
 import os
 import re
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +12,14 @@ MODULE_PATH = Path(__file__).with_name("update_uwu_logs.py")
 SPEC = importlib.util.spec_from_file_location("update_uwu_logs", MODULE_PATH)
 uwu = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(uwu)
+
+AUDIT_MODULE_PATH = Path(__file__).with_name("test_rising_gods_data_integrity.py")
+AUDIT_SPEC = importlib.util.spec_from_file_location(
+    "rising_gods_data_integrity_audit",
+    AUDIT_MODULE_PATH,
+)
+audit = importlib.util.module_from_spec(AUDIT_SPEC)
+AUDIT_SPEC.loader.exec_module(audit)
 
 
 def player(name="Example", class_i=3, spec_i=2, score=9000, bosses=None):
@@ -228,6 +238,12 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("Get-RunStepLabels", live_updater)
         self.assertIn("Write-Progress", live_updater)
         self.assertIn("Confirm-UpdatePlan", live_updater)
+        self.assertIn("Checking live AddOns write access", live_updater)
+        self.assertIn("Assert-AddOnsWriteAccess", live_updater)
+        self.assertIn("Windows denied write access", live_updater)
+        self.assertIn("Checking live AddOns write access", linux_updater)
+        self.assertIn("assert_addons_write_access", linux_updater)
+        self.assertIn("is not writable", linux_updater)
         self.assertIn("c o o l s t a t s", live_updater)
         self.assertIn("c o o l s t a t s", linux_updater)
         self.assertIn("Rising Gods logs", live_updater)
@@ -263,6 +279,8 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("audit_data_addon", linux_updater)
         self.assertIn("test_rising_gods_data_integrity.ps1", live_updater)
         self.assertIn("test_rising_gods_data_integrity.py", linux_updater)
+        self.assertIn("AllowTemporaryFolderName", live_updater)
+        self.assertIn("allow_temporary_folder_name=True", linux_updater)
         self.assertIn("rankless player rows", live_updater)
         self.assertIn("Refusing to update from a workspace containing non-Rising-Gods realm data", live_updater)
         self.assertIn("Refusing to update from a workspace containing non-Rising-Gods realm data", linux_updater)
@@ -349,6 +367,8 @@ class RisingGodsTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("ExpectedChunkCount = 6", audit)
         self.assertIn("expected_chunk_count: int = 6", python_audit)
+        self.assertIn("AllowTemporaryFolderName", audit)
+        self.assertIn("allow_temporary_folder_name", python_audit)
         self.assertIn("Duplicate player key across chunks", audit)
         self.assertIn("Duplicate player key across chunks", python_audit)
         self.assertIn("Generated data chunks are not balanced", audit)
@@ -367,6 +387,27 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("Unexpected non-addon files", python_audit)
         self.assertNotIn("coolstats_Data_Onyxia", audit)
         self.assertNotIn("coolstats_Data_Onyxia", python_audit)
+
+    def test_python_data_integrity_audit_allows_installer_temp_folder_only_when_requested(self):
+        source = REPOSITORY_ROOT / "realm_data" / "coolstats_Data_RisingGods"
+        with tempfile.TemporaryDirectory() as temp_root:
+            staged = Path(temp_root) / "coolstats_Data_RisingGods.__coolstats_update_tmp_123"
+            shutil.copytree(source, staged)
+            with self.assertRaisesRegex(RuntimeError, "must be named coolstats_Data_RisingGods"):
+                audit.audit_data_addon(
+                    staged,
+                    expected_version="0.2.34-rg5",
+                    expected_max_per_spec=600,
+                    quiet=True,
+                )
+            result = audit.audit_data_addon(
+                staged,
+                expected_version="0.2.34-rg5",
+                expected_max_per_spec=600,
+                allow_temporary_folder_name=True,
+                quiet=True,
+            )
+            self.assertEqual(result["players"], 10075)
 
     def test_warmane_realm_directories_are_absent(self):
         realm_root = REPOSITORY_ROOT / "realm_data"

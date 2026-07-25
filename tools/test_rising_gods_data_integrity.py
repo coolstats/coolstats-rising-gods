@@ -56,10 +56,12 @@ def audit_data_addon(
     min_players: int = 6000,
     max_players: int = 20000,
     expected_chunk_count: int = 6,
+    allow_temporary_folder_name: bool = False,
     quiet: bool = False,
 ) -> Dict[str, int]:
     addon_path = data_addon_path.resolve()
-    if addon_path.name != "coolstats_Data_RisingGods":
+    temporary_name = re.match(r"^coolstats_Data_RisingGods\.__coolstats_update_tmp(_\d+)?$", addon_path.name)
+    if addon_path.name != "coolstats_Data_RisingGods" and not (allow_temporary_folder_name and temporary_name):
         raise RuntimeError(f"Data addon folder must be named coolstats_Data_RisingGods: {addon_path}")
     if not addon_path.is_dir():
         raise RuntimeError(f"Missing Rising Gods data addon folder: {addon_path}")
@@ -223,6 +225,7 @@ def main() -> int:
     parser.add_argument("--min-players", type=int, default=6000)
     parser.add_argument("--max-players", type=int, default=20000)
     parser.add_argument("--expected-chunk-count", type=int, default=6)
+    parser.add_argument("--allow-temporary-folder-name", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -234,6 +237,7 @@ def main() -> int:
             min_players=args.min_players,
             max_players=args.max_players,
             expected_chunk_count=args.expected_chunk_count,
+            allow_temporary_folder_name=args.allow_temporary_folder_name,
             quiet=args.quiet,
         )
     except RuntimeError as exc:

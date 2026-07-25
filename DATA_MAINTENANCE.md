@@ -51,6 +51,8 @@ The public updater must stay auditable and data-only:
   publishing access;
 - update only `coolstats_Data_RisingGods` in the user's live `Interface\AddOns`
   folder;
+- check live `Interface\AddOns` write access before downloading new data, so
+  protected Windows folders fail early with a clear message;
 - back up the old live data addon before replacement;
 - validate generated Rising Gods metadata, encounter coverage, ranked-player
   count, duplicate player keys, chunk distribution, and rankless-row guards
@@ -61,10 +63,13 @@ The public updater must stay auditable and data-only:
   usernames, saved AddOns paths, credentials, and non-`coolstats` GitHub owners;
 - run the release privacy audit before publishing any ZIP;
 - run Lua 5.1 validation when `luac` is available, and make it required only for
-  official release packaging.
+  official release packaging;
 - ship both launchers at the release ZIP root and the helper scripts in
   `coolstats_LogUpdater/tools/` so an extracted release can auto-detect its
-  `Interface\AddOns` folder.
+  `Interface\AddOns` folder;
+- allow installer temporary folder names only for staged pre-install audits;
+  final installed data folders must still be named exactly
+  `coolstats_Data_RisingGods`.
 
 ## Commands
 
@@ -80,7 +85,7 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg4
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg5
 ```
 
 Generated runtime data:

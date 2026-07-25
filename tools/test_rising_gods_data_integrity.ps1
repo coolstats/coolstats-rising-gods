@@ -12,6 +12,8 @@ param(
 
 	[int]$ExpectedChunkCount = 6,
 
+	[switch]$AllowTemporaryFolderName,
+
 	[switch]$Quiet
 )
 
@@ -48,7 +50,8 @@ function Require-Contains {
 }
 
 $addonPath = [System.IO.Path]::GetFullPath($DataAddonPath)
-if ((Split-Path -Leaf $addonPath) -ne "coolstats_Data_RisingGods") {
+$addonFolderName = Split-Path -Leaf $addonPath
+if ($addonFolderName -ne "coolstats_Data_RisingGods" -and (-not $AllowTemporaryFolderName -or $addonFolderName -notmatch "^coolstats_Data_RisingGods\.__coolstats_update_tmp(_\d+)?$")) {
 	throw "Data addon folder must be named coolstats_Data_RisingGods: $addonPath"
 }
 if (-not (Test-Path -LiteralPath $addonPath -PathType Container)) {

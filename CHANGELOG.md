@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.34-rg5 - 2026-07-25
+
+### Public log updater
+
+- Fixed live-install validation so the staged temporary data folder
+  `coolstats_Data_RisingGods.__coolstats_update_tmp...` is accepted during the
+  pre-install audit while the final installed folder must still be named exactly
+  `coolstats_Data_RisingGods`.
+- Added an early live `Interface/AddOns` write-access check before the updater
+  downloads new data, with clearer guidance for Windows installs under
+  protected folders such as `Program Files`.
+- Improved temporary-folder error messages for stale or locked update folders.
+- Applied the same install safety fixes to both the Windows/PowerShell and
+  Linux/Python updater paths.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg5`.
+
 ## 0.2.34-rg4 - 2026-07-24
 
 ### Public log updater

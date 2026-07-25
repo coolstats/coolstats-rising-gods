@@ -16,7 +16,7 @@ this repository.
 
 ## Current Bundled Logs Coverage
 
-As of `0.2.34-rg4`, the install-ready release ships:
+As of `0.2.34-rg5`, the install-ready release ships:
 
 - **Realm:** Rising-Gods
 - **Phase:** ICC profile
@@ -220,6 +220,12 @@ duplicate keys, ranked-player count, and rankless-row guards, then backs up the
 old live data addon before replacement. The installed data addon is audited
 again after replacement.
 
+If your WoW install is under a Windows protected folder such as `Program Files`,
+Windows may deny write access to `Interface/AddOns`. In that case, run the
+official updater from an elevated terminal or move the WoW/addon folder to a
+normal writable location. The updater checks this before downloading data and
+will leave the existing live addon untouched when writes are denied.
+
 Examples:
 
 ```powershell
@@ -303,7 +309,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg4
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg5
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for updater and release safety

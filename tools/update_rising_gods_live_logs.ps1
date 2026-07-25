@@ -45,6 +45,9 @@ function Get-RunStepLabels {
 	if (-not $SkipApiValidation) {
 		$steps += "Validate UwU profile"
 	}
+	if (-not $NoInstall) {
+		$steps += "Check live AddOns write access"
+	}
 	$steps += "Download UwU logs and rebuild data"
 	$steps += "Validate generated data"
 	if ($NoInstall) {
@@ -465,6 +468,7 @@ function Invoke-RisingGodsDataIntegrityAudit {
 		[string]$DataAddonPath,
 		[string]$ExpectedVersion = "",
 		[int]$ExpectedMaxPerSpec = 600,
+		[switch]$AllowTemporaryFolderName,
 		[switch]$Quiet
 	)
 
@@ -483,7 +487,29 @@ function Invoke-RisingGodsDataIntegrityAudit {
 	if ($Quiet) {
 		$arguments["Quiet"] = $true
 	}
+	if ($AllowTemporaryFolderName) {
+		$arguments["AllowTemporaryFolderName"] = $true
+	}
 	& $auditScript @arguments
+}
+
+function Assert-AddOnsWriteAccess {
+	param([string]$AddOnsPath)
+
+	$addonsRoot = Get-NormalizedFullPath $AddOnsPath
+	$probe = Join-SafeChildPath -RootPath $addonsRoot -ChildName ("_coolstats_write_test_{0}" -f $PID)
+	try {
+		New-Item -ItemType Directory -Path $probe -Force | Out-Null
+		Set-Content -LiteralPath (Join-Path $probe "probe.tmp") -Value "ok" -Encoding ASCII
+	}
+	catch {
+		throw "Windows denied write access to the selected Interface\AddOns folder: $addonsRoot. If World of Warcraft is installed under Program Files, move the game/addon to a writable folder or run the official coolstats updater from an elevated terminal. Original error: $($_.Exception.Message)"
+	}
+	finally {
+		if (Test-Path -LiteralPath $probe) {
+			Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
+		}
+	}
 }
 
 function Invoke-OptionalLua51Validation {
@@ -582,7 +608,7 @@ function Install-RisingGodsDataAddon {
 	$source = Get-NormalizedFullPath $source
 	$addonsRoot = Get-NormalizedFullPath $AddOnsPath
 	$target = Join-SafeChildPath -RootPath $addonsRoot -ChildName "coolstats_Data_RisingGods"
-	$temp = Join-SafeChildPath -RootPath $addonsRoot -ChildName "coolstats_Data_RisingGods.__coolstats_update_tmp"
+	$temp = Join-SafeChildPath -RootPath $addonsRoot -ChildName ("coolstats_Data_RisingGods.__coolstats_update_tmp_{0}" -f $PID)
 	$backupRoot = Join-SafeChildPath -RootPath $addonsRoot -ChildName "_coolstats_backups"
 	$backup = Join-SafeChildPath -RootPath $backupRoot -ChildName ("coolstats_Data_RisingGods_{0}_{1}" -f (Get-Date -Format "yyyyMMdd_HHmmss"), $PID)
 	$oldMoved = $false
@@ -593,12 +619,22 @@ function Install-RisingGodsDataAddon {
 
 	try {
 		if (Test-Path -LiteralPath $temp) {
-			Remove-Item -LiteralPath $temp -Recurse -Force
+			try {
+				Remove-Item -LiteralPath $temp -Recurse -Force
+			}
+			catch {
+				throw "Could not clean the previous temporary update folder: $temp. Close World of Warcraft and any file browser windows using the folder, then try again. Original error: $($_.Exception.Message)"
+			}
 		}
 
-		Copy-Item -LiteralPath $source -Destination $temp -Recurse -Force
+		try {
+			Copy-Item -LiteralPath $source -Destination $temp -Recurse -Force
+		}
+		catch {
+			throw "Could not create the temporary update folder: $temp. Windows may be denying writes to this AddOns folder. If it is under Program Files, move the game/addon to a writable folder or run the official coolstats updater from an elevated terminal. Original error: $($_.Exception.Message)"
+		}
 		[void](Assert-RisingGodsDataAddonShape -DataAddonPath $temp)
-		Invoke-RisingGodsDataIntegrityAudit -RepositoryRoot $RepositoryRoot -DataAddonPath $temp -ExpectedVersion $ExpectedVersion -ExpectedMaxPerSpec $ExpectedMaxPerSpec -Quiet
+		Invoke-RisingGodsDataIntegrityAudit -RepositoryRoot $RepositoryRoot -DataAddonPath $temp -ExpectedVersion $ExpectedVersion -ExpectedMaxPerSpec $ExpectedMaxPerSpec -AllowTemporaryFolderName -Quiet
 
 		New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 		if (Test-Path -LiteralPath $target) {
@@ -671,6 +707,11 @@ try {
 		}
 	}
 	Confirm-UpdatePlan -RepositoryRoot $repositoryRoot -AddOnsPath $liveAddOnsPath -MaxPerSpec $MaxPerSpec -BulkTopLimit $BulkTopLimit -BossName $BossName -SkipApiValidation ([bool]$SkipApiValidation) -NoInstall ([bool]$NoInstall) -Yes ([bool]$Yes)
+
+	if (-not $NoInstall) {
+		Write-Step "Checking live AddOns write access"
+		Assert-AddOnsWriteAccess -AddOnsPath $liveAddOnsPath
+	}
 
 	$generatedDataAddon = $layout.WorkDataAddon
 	$luaOutput = Join-Path $generatedDataAddon "data\logs\icc\coolstats_uwu_data.lua"
