@@ -202,6 +202,46 @@ Both launchers show a confirmation screen before replacing live addon files and
 use numbered progress steps while they work. The Linux launcher is run through
 `bash`, so it does not rely on the ZIP preserving executable permissions.
 
+### Python 3 Requirement
+
+The public log updaters rebuild the Rising Gods data from UwU Logs on your
+machine, so they require **Python 3**. The Windows `.bat` file launches the
+PowerShell updater, and that updater calls Python during the data refresh. The
+Linux `.sh` launcher calls `python3` when it is available, then falls back to
+`python`.
+
+Install Python only from the official Python website:
+
+- Download Python: <https://www.python.org/downloads/>
+- Windows setup guide: <https://docs.python.org/3/using/windows.html>
+- Linux and Unix setup guide: <https://docs.python.org/3/using/unix.html>
+
+On Windows, the easiest setup is the official installer from python.org. During
+installation, enable the option that adds Python to `PATH`, then open a new
+Command Prompt or PowerShell window and run:
+
+```powershell
+python --version
+```
+
+On Linux, most distros already ship Python 3. To check:
+
+```bash
+python3 --version
+```
+
+If Python is installed under a custom command or path, set it before running
+the launcher:
+
+```powershell
+$env:COOLSTATS_PYTHON = "C:\Path\To\python.exe"
+.\Update_Rising_Gods_Logs.bat
+```
+
+```bash
+COOLSTATS_PYTHON=/custom/path/python3 bash ./Update_Rising_Gods_Logs.sh
+```
+
 Available modes:
 
 - `1`: preview the UI and validate the currently bundled data.
