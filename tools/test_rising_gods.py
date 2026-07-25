@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
@@ -122,6 +123,61 @@ class RisingGodsTests(unittest.TestCase):
         self.assertEqual(set(updates), {"rankedone"})
         self.assertEqual(names, {"rankedone": "RankedOne"})
 
+    def test_duplicate_rankings_use_character_confirmed_current_row(self):
+        def fake_fetch_points(server, class_i, spec_i, timeout, retries):
+            if class_i == 9 and spec_i == 2:
+                rows = []
+                for rank in range(1, 181):
+                    if rank == 35:
+                        rows.append(["Kandélini", 98.875, 98844])
+                    elif rank == 173:
+                        rows.append(["Kandélini", 94.088, 94059])
+                    else:
+                        rows.append([f"Player{rank}", 50.0, 50000])
+                return rows
+            return []
+
+        def fake_fetch_character(server, name, spec_i, timeout, retries):
+            return {
+                "name": "Kandélini",
+                "class_i": 9,
+                "overall_points": 9408.846742490172,
+                "overall_rank": 173,
+            }
+
+        with patch.object(uwu, "fetch_points", side_effect=fake_fetch_points), patch.object(uwu, "fetch_character", side_effect=fake_fetch_character):
+            data = uwu.collect_scores("Rising-Gods", 600, 1, 0, 0)
+
+        current = data["players"]["kandélini"]
+        self.assertEqual(current["score_centi"], 9409)
+        self.assertEqual(current["spec_rank"], 173)
+        self.assertEqual(current["specs"], {2: 9409})
+        self.assertEqual(current["spec_ranks"], {2: 173})
+        self.assertEqual(data["duplicate_boss_repair_keys"], {"kandélini"})
+        self.assertEqual(data["duplicate_rankings"]["resolved"], 1)
+
+    def test_capped_boss_leaderboard_scores_use_seen_unique_player_count(self):
+        rows = []
+        for index in range(1, 72):
+            rows.append([f"report-{index}", 100, f"guid-{index}", f"Player{index}", 100000, None])
+        for index in range(72, 200):
+            rows.append([f"padding-{index}", 100, "guid-1", "Player1", 90000, None])
+        rows.append(["target-report", 100, "guid-target", "Target", 50000, None])
+        while len(rows) < 10000:
+            rows.append([f"tail-{len(rows)}", 100, "guid-1", "Player1", 80000, None])
+
+        updates, _, raid_rows, unique_rows = uwu.build_top_boss_updates(
+            rows,
+            {"target": "target"},
+            10000,
+        )
+
+        self.assertEqual(raid_rows, 10000)
+        self.assertEqual(unique_rows, 72)
+        self.assertEqual(updates["target"]["rank_players"], 72)
+        self.assertEqual(updates["target"]["rank_raids"], 200)
+        self.assertEqual(updates["target"]["score_centi"], 9811)
+
     def test_bulk_boss_merge_keeps_cached_rows_when_refresh_is_partial(self):
         current = player(name="Pentendo", class_i=3, spec_i=2, score=9619)
         refreshed = {
@@ -204,6 +260,8 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("[string[]]$BossName", update_script)
         self.assertIn('"--boss-name"', update_script)
         self.assertIn("targeted character boss repair after bulk mode", updater)
+        self.assertIn("automatic duplicate-name boss repair", updater)
+        self.assertIn("resolve_duplicate_ranking_rows", updater)
         self.assertNotIn("boss-name is only used by --character-bosses", updater)
 
     def test_public_log_updater_is_auditable_and_data_only(self):
@@ -396,18 +454,18 @@ class RisingGodsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "must be named coolstats_Data_RisingGods"):
                 audit.audit_data_addon(
                     staged,
-                    expected_version="0.2.34-rg5",
+                    expected_version="0.2.34-rg6",
                     expected_max_per_spec=600,
                     quiet=True,
                 )
             result = audit.audit_data_addon(
                 staged,
-                expected_version="0.2.34-rg5",
+                expected_version="0.2.34-rg6",
                 expected_max_per_spec=600,
                 allow_temporary_folder_name=True,
                 quiet=True,
             )
-            self.assertEqual(result["players"], 10075)
+            self.assertEqual(result["players"], 10072)
 
     def test_warmane_realm_directories_are_absent(self):
         realm_root = REPOSITORY_ROOT / "realm_data"

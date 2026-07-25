@@ -58,6 +58,7 @@ class Ui:
         print("                  Rising Gods logs")
         print("============================================================")
         print(f" Data-only updater for {DATA_ADDON_NAME}")
+        print(" Duplicate-name safeguards and boss repairs are automatic.")
         print(" No admin rights, no credentials, no GitHub publishing.")
         print()
 
@@ -209,6 +210,7 @@ def confirm_update_plan(
     print(f"  UwU profile check:  {'skipped' if skip_api_validation else 'enabled'}")
     print(f"  Ranked pull:        {max_per_spec} players per class/spec")
     print(f"  Boss pull limit:    {bulk_top_limit} rows per boss/class/spec")
+    print("  Duplicate names:    character-confirmed with automatic boss repair")
     print(f"  Targeted repairs:   {', '.join(boss_names) if boss_names else 'none'}")
     print()
     print("This will not modify the core coolstats addon or the cache addon.")

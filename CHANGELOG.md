@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.34-rg6 - 2026-07-25
+
+### Rising Gods data integrity
+
+- Fixed duplicate-character-name handling for reused Rising Gods names, where
+  UwU Logs can expose old and current records under the same display name. The
+  updater now confirms ambiguous ranking rows through the character endpoint
+  and automatically repairs boss rows for those players after the bulk
+  leaderboard pass.
+- Fixed inflated boss parse estimates on capped 10,000-row leaderboards by
+  scoring player-rank components against the seen unique-player population
+  instead of the log-row cap.
+- Refreshed the Rising-Gods ICC data on 2026-07-25 with 10,072 active ranked
+  players and automatic duplicate-name boss repairs.
+
+### Public log updater
+
+- Added duplicate-name safeguard notes to the Windows and Linux launchers and
+  confirmation screens so public data refreshes explain the automatic reused
+  character-name repair.
+
 ## 0.2.34-rg5 - 2026-07-25
 
 ### Public log updater

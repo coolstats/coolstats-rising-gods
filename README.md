@@ -16,14 +16,14 @@ this repository.
 
 ## Current Bundled Logs Coverage
 
-As of `0.2.34-rg5`, the install-ready release ships:
+As of `0.2.34-rg6`, the bundled data is:
 
 - **Realm:** Rising-Gods
 - **Phase:** ICC profile
-- **Bundled players:** 10,075 active ranked players
+- **Bundled players:** 10,072 active ranked players
 - **Ranked pull size:** top 600 players per class/specialization
 - **Encounters:** Icecrown Citadel, Toravon, Halion, and Anub'arak
-- **Generated:** 2026-07-24
+- **Generated:** 2026-07-25
 
 The Rising Gods dataset intentionally stays ranked-player-only. Boss
 leaderboards enrich players already present in the ranked coverage, but do not
@@ -201,6 +201,9 @@ release. The public updaters update only `coolstats_Data_RisingGods`.
 Both launchers show a confirmation screen before replacing live addon files and
 use numbered progress steps while they work. The Linux launcher is run through
 `bash`, so it does not rely on the ZIP preserving executable permissions.
+Refreshes also include duplicate-name safeguards for reused Rising Gods
+character names: ambiguous ranked rows are confirmed through the UwU Logs
+character endpoint, and affected boss rows are automatically repaired.
 
 ### Python 3 Requirement
 
@@ -256,9 +259,9 @@ The updater is intentionally readable source instead of a compiled executable.
 It performs no GitHub publishing, uses no credentials, requests no administrator
 rights, and ships no maintainer-local paths or saved install folders. It stages
 new data, audits Rising Gods metadata, encounter coverage, chunk balance,
-duplicate keys, ranked-player count, and rankless-row guards, then backs up the
-old live data addon before replacement. The installed data addon is audited
-again after replacement.
+duplicate keys, duplicate-name repairs, ranked-player count, and rankless-row
+guards, then backs up the old live data addon before replacement. The installed
+data addon is audited again after replacement.
 
 If your WoW install is under a Windows protected folder such as `Program Files`,
 Windows may deny write access to `Interface/AddOns`. In that case, run the
@@ -349,7 +352,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg5
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg6
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for updater and release safety

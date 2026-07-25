@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods
 ## Notes: Realm-specific UwU Logs data for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.34-rg5
+## Version: 0.2.34-rg6
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats

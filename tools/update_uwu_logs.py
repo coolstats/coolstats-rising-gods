@@ -421,6 +421,140 @@ def parse_points_row(row: list, class_i: int, spec_i: int, rank: int) -> dict | 
     }
 
 
+def ranking_row_identity(row: dict) -> tuple[str, int, int]:
+    return (row["key"], row["class_i"], row["spec_i"])
+
+
+def find_ambiguous_ranking_groups(rows_by_spec: list[list[dict]]) -> dict[tuple[str, int, int], list[dict]]:
+    rows_by_identity: dict[tuple[str, int, int], list[dict]] = {}
+    identities_by_key: dict[str, set[tuple[str, int, int]]] = {}
+    for parsed_rows in rows_by_spec:
+        for row in parsed_rows:
+            identity = ranking_row_identity(row)
+            rows_by_identity.setdefault(identity, []).append(row)
+            identities_by_key.setdefault(row["key"], set()).add(identity)
+
+    ambiguous_identities = {
+        identity
+        for identity, rows in rows_by_identity.items()
+        if len(rows) > 1
+    }
+    for identities in identities_by_key.values():
+        class_ids = {identity[1] for identity in identities}
+        if len(class_ids) > 1:
+            ambiguous_identities.update(identities)
+
+    return {
+        identity: rows_by_identity[identity]
+        for identity in ambiguous_identities
+    }
+
+
+def character_overall_score_centi(character: dict) -> int | None:
+    return point_score_to_centi(character.get("overall_points"))
+
+
+def character_overall_rank(character: dict) -> int | None:
+    try:
+        return int(character.get("overall_rank"))
+    except (TypeError, ValueError):
+        return None
+
+
+def select_current_duplicate_ranking_row(rows: list[dict], character: dict) -> dict | None:
+    if not rows:
+        return None
+    class_i = rows[0]["class_i"]
+    try:
+        character_class_i = int(character.get("class_i"))
+    except (TypeError, ValueError):
+        return None
+    if character_class_i != class_i:
+        return None
+
+    expected_score = character_overall_score_centi(character)
+    expected_rank = character_overall_rank(character)
+    if expected_score is None or expected_score <= 0 or expected_rank is None:
+        return None
+
+    exact_matches = [
+        row
+        for row in rows
+        if row["rank"] == expected_rank and abs(row["score_centi"] - expected_score) <= 1
+    ]
+    if exact_matches:
+        return exact_matches[0]
+
+    score_matches = [
+        row
+        for row in rows
+        if abs(row["score_centi"] - expected_score) <= 1
+    ]
+    if score_matches:
+        return min(score_matches, key=lambda row: abs(row["rank"] - expected_rank))
+    return None
+
+
+def resolve_duplicate_ranking_rows(
+    server: str,
+    rows_by_spec: list[list[dict]],
+    timeout: int,
+    retries: int,
+    sleep: float,
+) -> tuple[dict[tuple[str, int, int], dict | None], set[str], dict]:
+    ambiguous_groups = find_ambiguous_ranking_groups(rows_by_spec)
+    choices: dict[tuple[str, int, int], dict | None] = {}
+    repaired_keys: set[str] = set()
+    summary = {
+        "groups": len(ambiguous_groups),
+        "resolved": 0,
+        "skipped": 0,
+        "failed": 0,
+        "boss_repair_targets": 0,
+    }
+    if not ambiguous_groups:
+        return choices, repaired_keys, summary
+
+    log(f"duplicate rankings: checking {len(ambiguous_groups)} ambiguous name/spec groups")
+    for identity, rows in sorted(ambiguous_groups.items(), key=lambda item: (item[0][0], item[0][1], item[0][2])):
+        key, class_i, spec_i = identity
+        name = rows[0]["name"]
+        try:
+            character = fetch_character(server, name, spec_i, timeout, retries)
+        except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+            choices[identity] = None
+            summary["failed"] += 1
+            log(f"warning: failed duplicate ranking repair for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}: {exc}")
+        else:
+            selected = select_current_duplicate_ranking_row(rows, character)
+            choices[identity] = selected
+            if selected:
+                repaired_keys.add(key)
+                summary["resolved"] += 1
+            else:
+                summary["skipped"] += 1
+                log(f"warning: skipped ambiguous duplicate ranking for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}")
+        if sleep > 0:
+            time.sleep(sleep)
+
+    summary["boss_repair_targets"] = len(repaired_keys)
+    log(
+        "duplicate rankings: "
+        f"{summary['resolved']} resolved, "
+        f"{summary['skipped']} skipped, "
+        f"{summary['failed']} failed, "
+        f"{summary['boss_repair_targets']} boss repair targets"
+    )
+    return choices, repaired_keys, summary
+
+
+def is_selected_ranking_row(row: dict, duplicate_choices: dict[tuple[str, int, int], dict | None]) -> bool:
+    identity = ranking_row_identity(row)
+    if identity not in duplicate_choices:
+        return True
+    return duplicate_choices[identity] is row
+
+
 def top_row_dps(useful_amount: float, duration: float) -> float | None:
     if duration <= 0:
         return None
@@ -653,7 +787,6 @@ def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, s
     fetched = []
     failed_leaderboards = []
     rows_by_spec = []
-    active_keys = set()
 
     for class_i, class_name in enumerate(CLASSES):
         for spec_i, spec_name in SPECS[class_i].items():
@@ -671,9 +804,6 @@ def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, s
                 if not parsed:
                     continue
                 parsed_rows.append(parsed)
-                if rank <= max_per_spec:
-                    active_keys.add(parsed["key"])
-                    retained += 1
 
             rows_by_spec.append(parsed_rows)
             fetched.append(
@@ -688,6 +818,32 @@ def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, s
 
             if sleep > 0:
                 time.sleep(sleep)
+
+    duplicate_choices, duplicate_repair_keys, duplicate_summary = resolve_duplicate_ranking_rows(
+        server,
+        rows_by_spec,
+        timeout,
+        retries,
+        sleep,
+    )
+
+    active_keys = set()
+    duplicate_boss_repair_keys = set()
+    for index, parsed_rows in enumerate(rows_by_spec):
+        filtered_rows = [
+            row
+            for row in parsed_rows
+            if is_selected_ranking_row(row, duplicate_choices)
+        ]
+        rows_by_spec[index] = filtered_rows
+        retained = 0
+        for row in filtered_rows:
+            if row["rank"] <= max_per_spec:
+                active_keys.add(row["key"])
+                retained += 1
+                if row["key"] in duplicate_repair_keys:
+                    duplicate_boss_repair_keys.add(row["key"])
+        fetched[index]["retained"] = retained
 
     for parsed_rows in rows_by_spec:
         for row in parsed_rows:
@@ -716,6 +872,8 @@ def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, s
         "failed_leaderboards": failed_leaderboards,
         "boss_names": [],
         "active_player_keys": active_keys,
+        "duplicate_rankings": duplicate_summary,
+        "duplicate_boss_repair_keys": duplicate_boss_repair_keys,
     }
 
 
@@ -1121,7 +1279,7 @@ def build_top_boss_updates(
         seen_guids.add(row["guid"])
         unique_entries.append(row)
 
-    player_count = 10000 if top_limit >= 10000 and len(parsed_rows) >= 10000 else min(10000, len(unique_entries))
+    player_count = len(unique_entries)
     raid_count = len(parsed_rows)
     updates = {}
     update_names = {}
@@ -1605,6 +1763,7 @@ def write_json(path: Path, server: str, max_per_spec: int, generated_at: str, da
         "bulk_boss_rows": data.get("bulk_boss_rows", 0),
         "bulk_boss_encounter_rows": data.get("bulk_boss_encounter_rows"),
         "missing_boss_encounters": data.get("missing_boss_encounters"),
+        "duplicate_rankings": data.get("duplicate_rankings"),
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -1884,7 +2043,12 @@ def main() -> int:
     boss_cache = None
     if args.include_bosses:
         boss_cache = None if args.no_boss_cache else args.boss_cache or default_boss_cache_path(args.server, realm_profile)
-        boss_targets = {canonical_player_key(name) for name in args.boss_name if canonical_player_key(name)}
+        manual_boss_targets = {canonical_player_key(name) for name in args.boss_name if canonical_player_key(name)}
+        duplicate_boss_targets = set(data.get("duplicate_boss_repair_keys") or set())
+        boss_targets = set(manual_boss_targets)
+        boss_targets.update(duplicate_boss_targets)
+        if duplicate_boss_targets:
+            log("automatic duplicate-name boss repair: " + ", ".join(sorted(duplicate_boss_targets)))
         use_character_bosses = args.character_bosses or (bool(boss_targets) and not (args.weekly or args.weekly_full))
         if use_character_bosses:
             add_character_bosses(
@@ -1914,7 +2078,7 @@ def main() -> int:
                 args.bulk_checkpoint_every,
             )
             if boss_targets:
-                target_limit = args.boss_limit or len(boss_targets)
+                target_limit = max(args.boss_limit or 0, len(boss_targets))
                 log("targeted character boss repair after bulk mode: " + ", ".join(sorted(boss_targets)))
                 add_character_bosses(
                     args.server,

@@ -9,6 +9,7 @@ echo coolstats Rising Gods log updater
 echo ---------------------------------
 echo Windows / PowerShell launcher
 echo This updates only the Rising Gods data addon: coolstats_Data_RisingGods
+echo Includes duplicate-name safeguards for reused Rising Gods character names.
 echo A confirmation screen will appear before any live addon files are replaced.
 echo.
 echo Preparing updater...

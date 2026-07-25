@@ -87,6 +87,7 @@ function Write-UiHeader {
 	Write-Host "                  Rising Gods logs" -ForegroundColor DarkCyan
 	Write-Host "============================================================" -ForegroundColor DarkCyan
 	Write-Host " Data-only updater for coolstats_Data_RisingGods" -ForegroundColor Gray
+	Write-Host " Duplicate-name safeguards and boss repairs are automatic." -ForegroundColor Gray
 	Write-Host " No admin rights, no credentials, no GitHub publishing." -ForegroundColor Gray
 	Write-Host ""
 }
@@ -193,6 +194,7 @@ function Confirm-UpdatePlan {
 	Write-Host ("  UwU profile check:  {0}" -f ($(if ($SkipApiValidation) { "skipped" } else { "enabled" })))
 	Write-Host ("  Ranked pull:        {0} players per class/spec" -f $MaxPerSpec)
 	Write-Host ("  Boss pull limit:    {0} rows per boss/class/spec" -f $BulkTopLimit)
+	Write-Host ("  Duplicate names:    character-confirmed with automatic boss repair")
 	$targetedNames = @($BossName | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 	if ($targetedNames.Count -gt 0) {
 		Write-Host ("  Targeted repairs:   {0}" -f ($targetedNames -join ", "))

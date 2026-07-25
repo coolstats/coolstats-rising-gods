@@ -23,16 +23,18 @@ addon `coolstats_Data_RisingGods`.
 6. Boss leaderboards may enrich ranked players, but must not create rankless boss-only records.
 7. Bulk boss refreshes must merge with existing cached boss rows so a partial
    bulk response cannot shrink a player's available boss parses.
-8. Use `-BossName <character>` with weekly refreshes when a specific player's
+8. Duplicate display names must be resolved against the UwU character endpoint
+   so reused names do not merge old and current character records.
+9. Use `-BossName <character>` with weekly refreshes when a specific player's
    UwU character page needs targeted boss-log repair after the bulk pull.
-9. Generated Lua is committed; raw JSON and cache files remain local and ignored.
-10. The release archive must contain only the core, cache, and Rising Gods data addons.
-11. Never point these scripts at the Warmane repository or its release directory.
-12. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
-13. Lua 5.1 validation must pass before packaging or publishing a release.
-14. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
-15. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
-16. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
+10. Generated Lua is committed; raw JSON and cache files remain local and ignored.
+11. The release archive must contain only the core, cache, and Rising Gods data addons.
+12. Never point these scripts at the Warmane repository or its release directory.
+13. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
+14. Lua 5.1 validation must pass before packaging or publishing a release.
+15. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
+16. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
+17. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
 
 ## Public data updater
 
@@ -57,6 +59,8 @@ The public updater must stay auditable and data-only:
 - validate generated Rising Gods metadata, encounter coverage, ranked-player
   count, duplicate player keys, chunk distribution, and rankless-row guards
   before install;
+- resolve duplicate display names against the UwU character endpoint and run
+  automatic boss-row repair for affected players;
 - validate the copied live data addon again after replacement, and restore the
   backup if replacement fails;
 - keep the shipped launchers/helper files free of maintainer-local paths,
@@ -85,7 +89,7 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg5
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg6
 ```
 
 Generated runtime data:
