@@ -688,6 +688,10 @@ try {
 	}
 
 	$pythonCommand = Get-Command $Python -ErrorAction SilentlyContinue
+	if (($Python -eq "python" -or [string]::IsNullOrWhiteSpace($Python)) -and -not [string]::IsNullOrWhiteSpace($env:COOLSTATS_PYTHON)) {
+		$Python = $env:COOLSTATS_PYTHON
+		$pythonCommand = Get-Command $Python -ErrorAction SilentlyContinue
+	}
 	if (-not $pythonCommand) {
 		throw "Python was not found. Install Python 3 and make sure it is available as '$Python'."
 	}
