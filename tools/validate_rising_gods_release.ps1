@@ -88,15 +88,15 @@ try {
 		throw "Rising Gods phase metadata is missing or incorrect."
 	}
 
-	$requiredData = @(
-		"coolstats_uwu_data.lua",
-		"coolstats_uwu_data_01.lua",
-		"coolstats_uwu_data_02.lua",
-		"coolstats_uwu_data_03.lua",
-		"coolstats_uwu_data_04.lua",
-		"coolstats_uwu_data_05.lua",
-		"coolstats_uwu_data_06.lua"
-	)
+	$chunkLine = Select-String -LiteralPath $dataToc -Pattern "^## X-coolstats-PlayerChunks:\s*(\d+)$" | Select-Object -First 1
+	if (-not $chunkLine) {
+		throw "Rising Gods player chunk metadata is missing."
+	}
+	$chunkCount = [int]$chunkLine.Matches[0].Groups[1].Value
+	$requiredData = @("coolstats_uwu_data.lua")
+	for ($index = 1; $index -le $chunkCount; $index += 1) {
+		$requiredData += ("coolstats_uwu_data_{0:D2}.lua" -f $index)
+	}
 	foreach ($file in $requiredData) {
 		$path = Join-Path $validationRoot "coolstats_Data_RisingGods\data\logs\icc\$file"
 		if (-not (Test-Path -LiteralPath $path)) {

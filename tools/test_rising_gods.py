@@ -256,8 +256,14 @@ class RisingGodsTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         updater = (REPOSITORY_ROOT / "tools" / "update_uwu_logs.py").read_text(encoding="utf-8")
         self.assertIn("[int]$MaxPerSpec = 600", update_script)
+        self.assertIn("[int]$DuplicateWorkers = 8", update_script)
+        self.assertIn("[int]$BossWorkers = 4", update_script)
         self.assertIn("DEFAULT_MAX_PER_SPEC = 600", updater)
+        self.assertIn("DEFAULT_DUPLICATE_WORKERS = 8", updater)
+        self.assertIn("LUA_PLAYER_TARGET_CHUNK_SIZE = 3000", updater)
         self.assertIn("[string[]]$BossName", update_script)
+        self.assertIn("--duplicate-workers", update_script)
+        self.assertIn("--boss-workers", update_script)
         self.assertIn('"--boss-name"', update_script)
         self.assertIn("targeted character boss repair after bulk mode", updater)
         self.assertIn("automatic duplicate-name boss repair", updater)
@@ -423,8 +429,14 @@ class RisingGodsTests(unittest.TestCase):
         python_audit = (
             REPOSITORY_ROOT / "tools" / "test_rising_gods_data_integrity.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("ExpectedChunkCount = 6", audit)
-        self.assertIn("expected_chunk_count: int = 6", python_audit)
+        self.assertIn("ExpectedChunkCount = 0", audit)
+        self.assertIn("expected_chunk_count: int = 0", python_audit)
+        self.assertIn("X-coolstats-PlayerChunks", audit)
+        self.assertIn("X-coolstats-PlayerChunks", python_audit)
+        self.assertIn("ShouldSkipUwUDataChunk", audit)
+        self.assertIn("ShouldSkipUwUDataChunk", python_audit)
+        self.assertIn("playerLoadSteps", audit)
+        self.assertIn("playerLoadSteps", python_audit)
         self.assertIn("AllowTemporaryFolderName", audit)
         self.assertIn("allow_temporary_folder_name", python_audit)
         self.assertIn("Duplicate player key across chunks", audit)
@@ -448,24 +460,26 @@ class RisingGodsTests(unittest.TestCase):
 
     def test_python_data_integrity_audit_allows_installer_temp_folder_only_when_requested(self):
         source = REPOSITORY_ROOT / "realm_data" / "coolstats_Data_RisingGods"
+        toc_text = (source / "coolstats_Data_RisingGods.toc").read_text(encoding="utf-8")
+        version = re.search(r"^## Version:\s*(.+)$", toc_text, flags=re.MULTILINE).group(1).strip()
         with tempfile.TemporaryDirectory() as temp_root:
             staged = Path(temp_root) / "coolstats_Data_RisingGods.__coolstats_update_tmp_123"
             shutil.copytree(source, staged)
             with self.assertRaisesRegex(RuntimeError, "must be named coolstats_Data_RisingGods"):
                 audit.audit_data_addon(
                     staged,
-                    expected_version="0.2.34-rg6",
+                    expected_version=version,
                     expected_max_per_spec=600,
                     quiet=True,
                 )
             result = audit.audit_data_addon(
                 staged,
-                expected_version="0.2.34-rg6",
+                expected_version=version,
                 expected_max_per_spec=600,
                 allow_temporary_folder_name=True,
                 quiet=True,
             )
-            self.assertEqual(result["players"], 10072)
+            self.assertGreaterEqual(result["players"], 6000)
 
     def test_warmane_realm_directories_are_absent(self):
         realm_root = REPOSITORY_ROOT / "realm_data"

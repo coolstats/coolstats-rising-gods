@@ -38,7 +38,10 @@ DEFAULT_MIN_PLAYERS = 6000
 DEFAULT_MAX_PER_SPEC = 600
 DEFAULT_BULK_TOP_LIMIT = 10000
 DEFAULT_BULK_CHECKPOINT_EVERY = 10
-LUA_PLAYER_CHUNK_COUNT = 6
+DEFAULT_DUPLICATE_WORKERS = 8
+LUA_PLAYER_TARGET_CHUNK_SIZE = 3000
+LUA_PLAYER_MIN_CHUNK_COUNT = 6
+LUA_PLAYER_MAX_CHUNK_COUNT = 16
 PROFILE_VALIDATION_LIMIT = 10
 ADDON_VERSION_OVERRIDE = None
 
@@ -156,6 +159,17 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
+def format_name_preview(names, limit: int = 25) -> str:
+    values = sorted(str(name) for name in names if str(name))
+    if not values:
+        return "none"
+    preview = ", ".join(values[:limit])
+    remaining = len(values) - limit
+    if remaining > 0:
+        preview += f", ... (+{remaining} more)"
+    return f"{len(values)} total: {preview}"
+
+
 def normalize_name(name: str) -> str:
     return "".join(str(name).strip().lower().split())
 
@@ -227,14 +241,35 @@ def get_active_phase_id(server: str) -> str:
     return REALM_DEFAULT_PHASES[server_key]
 
 
-def write_data_addon_manifest(lua_path: Path, server: str, phase_id: str, profile: dict) -> Path | None:
+def get_lua_player_chunk_count(player_count: int | None) -> int:
+    player_count = max(0, int(player_count or 0))
+    if player_count <= 0:
+        return 1
+    chunk_count = max(1, (player_count + LUA_PLAYER_TARGET_CHUNK_SIZE - 1) // LUA_PLAYER_TARGET_CHUNK_SIZE)
+    if player_count >= DEFAULT_MIN_PLAYERS:
+        chunk_count = max(LUA_PLAYER_MIN_CHUNK_COUNT, chunk_count)
+    return min(LUA_PLAYER_MAX_CHUNK_COUNT, chunk_count)
+
+
+def write_data_addon_manifest(
+    lua_path: Path,
+    server: str,
+    phase_id: str,
+    profile: dict,
+    player_count: int | None = None,
+    chunk_count: int | None = None,
+) -> Path | None:
     addon_root = lua_path.parents[3]
     addon_name = profile["addon_name"]
     if addon_root.name != addon_name:
         raise ValueError(f"Realm data output must live under an addon folder named {addon_name}: {lua_path}")
 
+    chunk_count = int(chunk_count or get_lua_player_chunk_count(player_count))
+    chunk_files = sorted(lua_path.parent.glob(f"{lua_path.stem}_[0-9][0-9]{lua_path.suffix}"))
+    if len(chunk_files) != chunk_count:
+        raise ValueError(f"Realm data output has {len(chunk_files)} chunks for {server}, expected {chunk_count}: {lua_path.parent}")
     data_files = [lua_path]
-    data_files.extend(sorted(lua_path.parent.glob(f"{lua_path.stem}_[0-9][0-9]{lua_path.suffix}")))
+    data_files.extend(chunk_files)
     if not all(path.is_file() for path in data_files):
         raise ValueError(f"Realm data output is incomplete for {server}: {lua_path}")
 
@@ -250,6 +285,8 @@ def write_data_addon_manifest(lua_path: Path, server: str, phase_id: str, profil
         "## RequiredDeps: coolstats",
         f"## X-coolstats-Realm: {server}",
         f"## X-coolstats-Phase: {phase_id}",
+        f"## X-coolstats-PlayerCount: {int(player_count or 0)}",
+        f"## X-coolstats-PlayerChunks: {chunk_count}",
         "",
     ]
     lines.extend(str(path.relative_to(addon_root)).replace("/", "\\") for path in data_files)
@@ -501,6 +538,7 @@ def resolve_duplicate_ranking_rows(
     timeout: int,
     retries: int,
     sleep: float,
+    workers: int = DEFAULT_DUPLICATE_WORKERS,
 ) -> tuple[dict[tuple[str, int, int], dict | None], set[str], dict]:
     ambiguous_groups = find_ambiguous_ranking_groups(rows_by_spec)
     choices: dict[tuple[str, int, int], dict | None] = {}
@@ -515,27 +553,52 @@ def resolve_duplicate_ranking_rows(
     if not ambiguous_groups:
         return choices, repaired_keys, summary
 
-    log(f"duplicate rankings: checking {len(ambiguous_groups)} ambiguous name/spec groups")
-    for identity, rows in sorted(ambiguous_groups.items(), key=lambda item: (item[0][0], item[0][1], item[0][2])):
+    items = sorted(ambiguous_groups.items(), key=lambda item: (item[0][0], item[0][1], item[0][2]))
+    workers = max(1, min(int(workers or 1), len(items)))
+    log(f"duplicate rankings: checking {len(items)} ambiguous name/spec groups with {workers} workers")
+
+    def resolve_one(item: tuple[tuple[str, int, int], list[dict]]) -> tuple[tuple[str, int, int], dict | None, tuple[str, str | None]]:
+        identity, rows = item
         key, class_i, spec_i = identity
         name = rows[0]["name"]
         try:
             character = fetch_character(server, name, spec_i, timeout, retries)
         except (HTTPError, URLError, TimeoutError, ValueError) as exc:
-            choices[identity] = None
-            summary["failed"] += 1
-            log(f"warning: failed duplicate ranking repair for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}: {exc}")
-        else:
-            selected = select_current_duplicate_ranking_row(rows, character)
-            choices[identity] = selected
-            if selected:
-                repaired_keys.add(key)
-                summary["resolved"] += 1
-            else:
-                summary["skipped"] += 1
-                log(f"warning: skipped ambiguous duplicate ranking for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}")
-        if sleep > 0:
-            time.sleep(sleep)
+            return identity, None, (
+                "failed",
+                f"warning: failed duplicate ranking repair for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}: {exc}",
+            )
+        selected = select_current_duplicate_ranking_row(rows, character)
+        if selected:
+            return identity, selected, ("resolved", None)
+        return identity, None, (
+            "skipped",
+            f"warning: skipped ambiguous duplicate ranking for {name} {CLASSES[class_i]} {SPECS[class_i].get(spec_i, spec_i)}",
+        )
+
+    results = []
+    if workers == 1:
+        for item in items:
+            if sleep > 0:
+                time.sleep(sleep)
+            results.append(resolve_one(item))
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(resolve_one, item): item[0] for item in items}
+            for future in as_completed(futures):
+                results.append(future.result())
+
+    warning_count = 0
+    for identity, selected, outcome in sorted(results, key=lambda item: (item[0][0], item[0][1], item[0][2])):
+        choices[identity] = selected
+        status, message = outcome or ("skipped", None)
+        if selected:
+            repaired_keys.add(identity[0])
+        if status in summary:
+            summary[status] += 1
+        if message and warning_count < 20:
+            log(message)
+            warning_count += 1
 
     summary["boss_repair_targets"] = len(repaired_keys)
     log(
@@ -782,7 +845,14 @@ def summarize_active_boss_cache(data: dict, cache_entries: dict | None, max_age_
     return summary
 
 
-def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, sleep: float) -> dict:
+def collect_scores(
+    server: str,
+    max_per_spec: int,
+    timeout: int,
+    retries: int,
+    sleep: float,
+    duplicate_workers: int = DEFAULT_DUPLICATE_WORKERS,
+) -> dict:
     players = {}
     fetched = []
     failed_leaderboards = []
@@ -825,6 +895,7 @@ def collect_scores(server: str, max_per_spec: int, timeout: int, retries: int, s
         timeout,
         retries,
         sleep,
+        duplicate_workers,
     )
 
     active_keys = set()
@@ -1346,6 +1417,81 @@ def player_sort_key(item: tuple[str, dict]) -> tuple:
     )
 
 
+def player_load_score(player: dict) -> int:
+    scores = [int(player.get("score_centi") or 0)]
+    for history in (player.get("phase_history") or {}).values():
+        scores.append(int(history.get("score_centi") or 0))
+    for boss in (player.get("bosses") or {}).values():
+        scores.append(int(boss.get("score_centi") or 0))
+    for bosses in (player.get("spec_bosses") or {}).values():
+        for boss in (bosses or {}).values():
+            scores.append(int(boss.get("score_centi") or 0))
+    return max(scores or [0])
+
+
+def player_load_rank(player: dict) -> int:
+    ranks = []
+    spec_rank = player.get("spec_rank")
+    if spec_rank is not None:
+        ranks.append(int(spec_rank))
+    for history in (player.get("phase_history") or {}).values():
+        rank = history.get("rank")
+        if rank is not None:
+            ranks.append(int(rank))
+    for boss in (player.get("bosses") or {}).values():
+        rank = boss.get("rank_players") or boss.get("rank_raids")
+        if rank is not None:
+            ranks.append(int(rank))
+    return min(ranks or [10**9])
+
+
+def player_load_order_key(item: tuple[str, dict]) -> tuple:
+    key, player = item
+    return (
+        -player_load_score(player),
+        player_load_rank(player),
+        0 if player.get("active", True) else 1,
+        key,
+    )
+
+
+def player_group_tranche_key(item: tuple[str, dict]) -> tuple:
+    key, player = item
+    spec_rank = player.get("spec_rank")
+    return (
+        spec_rank is None,
+        spec_rank if spec_rank is not None else 10**9,
+        -player_load_score(player),
+        player_load_rank(player),
+        key,
+    )
+
+
+def build_player_chunks(player_items: list[tuple[str, dict]], chunk_count: int) -> list[list[tuple[str, dict]]]:
+    chunk_count = max(1, int(chunk_count or 1))
+    groups: dict[tuple[int, int], list[tuple[str, dict]]] = {}
+    for item in player_items:
+        _key, player = item
+        groups.setdefault(
+            (int(player.get("class_i") or 0), int(player.get("best_spec_i") or 0)),
+            [],
+        ).append(item)
+
+    chunks: list[list[tuple[str, dict]]] = [[] for _ in range(chunk_count)]
+    for group_key in sorted(groups):
+        group = sorted(groups[group_key], key=player_group_tranche_key)
+        group_size = len(group)
+        if group_size <= 0:
+            continue
+        for index, item in enumerate(group):
+            chunk_index = min(chunk_count - 1, (index * chunk_count) // group_size)
+            chunks[chunk_index].append(item)
+
+    for index in range(len(chunks)):
+        chunks[index].sort(key=player_sort_key)
+    return chunks
+
+
 def write_bulk_progress(
     cache_path: Path | None,
     cache: dict,
@@ -1536,7 +1682,7 @@ def add_bulk_top_bosses(
         f"{failed} failed requests"
     )
     if class_conflicts:
-        log("warning: ambiguous reused player names skipped: " + ", ".join(sorted(class_conflicts)))
+        log("warning: ambiguous reused player names skipped: " + format_name_preview(class_conflicts))
 
 
 def add_character_bosses(
@@ -1768,8 +1914,19 @@ def write_json(path: Path, server: str, max_per_spec: int, generated_at: str, da
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, data: dict) -> None:
+def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, data: dict, chunk_count: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    sorted_players = sorted(
+        data["players"].items(),
+        key=player_sort_key,
+    )
+    chunk_count = int(chunk_count or get_lua_player_chunk_count(len(sorted_players)))
+    player_chunks = build_player_chunks(sorted_players, chunk_count)
+    player_load_order = [key for key, _player in sorted(sorted_players, key=player_load_order_key)]
+    player_load_steps = [0]
+    for chunk in player_chunks:
+        player_load_steps.append(player_load_steps[-1] + len(chunk))
+
     lines = [
         "-- Auto-generated by tools/update_uwu_logs.py; do not edit by hand.",
         "coolstatsUwUData = {",
@@ -1783,6 +1940,9 @@ def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, dat
         f"\ttopSource = {lua_string(TOP_ENDPOINT)},",
         f"\tcharacterSource = {lua_string(CHARACTER_ENDPOINT)},",
         f"\tmaxPerSpec = {max_per_spec},",
+        f"\ttotalPlayers = {len(sorted_players)},",
+        f"\tplayerChunkCount = {chunk_count},",
+        "\tplayerLoadSteps = { " + ", ".join(str(value) for value in player_load_steps) + " },",
         "\tclasses = {",
     ]
 
@@ -1809,6 +1969,12 @@ def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, dat
     lines.append("\t-- historicalOverall = { scoreCenti, rank }")
     lines.append("\tplayers = {},")
     lines.append("}")
+    lines.append("if coolstats and coolstats.ShouldBuildUwUDataPlayerAllowList and coolstats.ShouldBuildUwUDataPlayerAllowList(coolstatsUwUData) then")
+    lines.append("\tcoolstats.BuildUwUDataPlayerAllowList(coolstatsUwUData, {")
+    for key in player_load_order:
+        lines.append(f"\t\t{lua_string(key)},")
+    lines.append("\t})")
+    lines.append("end")
 
     def lua_boss_data(bosses: dict | None) -> str:
         return ", ".join(
@@ -1825,11 +1991,7 @@ def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, dat
             if boss_name in boss_index_by_name
         )
 
-    sorted_players = sorted(
-        data["players"].items(),
-        key=player_sort_key,
-    )
-    player_lines = []
+    player_lines = {}
     for key, player in sorted_players:
         specs = ", ".join(
             f"[{spec_i}] = {score}"
@@ -1852,7 +2014,7 @@ def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, dat
             else "nil"
         )
         current_phase_ranked = "true" if player.get("active", True) else "false"
-        player_lines.append(
+        player_lines[key] = (
             "\t\t"
             f"[{lua_string(key)}] = {{ {lua_string(player['name'])}, "
             f"{player['score_centi']}, {player['class_i']}, {player['best_spec_i']}, "
@@ -1863,24 +2025,34 @@ def write_lua(path: Path, server: str, max_per_spec: int, generated_at: str, dat
     path.write_text("\n".join(lines), encoding="utf-8")
     active_chunk_paths = {
         path.with_name(f"{path.stem}_{chunk_index + 1:02d}{path.suffix}")
-        for chunk_index in range(LUA_PLAYER_CHUNK_COUNT)
+        for chunk_index in range(chunk_count)
     }
-    chunk_size = max(1, (len(player_lines) + LUA_PLAYER_CHUNK_COUNT - 1) // LUA_PLAYER_CHUNK_COUNT)
-    for chunk_index in range(LUA_PLAYER_CHUNK_COUNT):
+    chunk_start = 1
+    for chunk_index in range(chunk_count):
         chunk_path = path.with_name(f"{path.stem}_{chunk_index + 1:02d}{path.suffix}")
-        chunk_players = player_lines[chunk_index * chunk_size:(chunk_index + 1) * chunk_size]
+        chunk_keys = [key for key, _player in player_chunks[chunk_index]]
+        chunk_players = [player_lines[key] for key in chunk_keys]
+        chunk_end = chunk_start + len(chunk_players) - 1
         chunk_lines = [
             "-- Auto-generated by tools/update_uwu_logs.py; do not edit by hand.",
+            f"local chunkStartIndex = {chunk_start}",
+            "if coolstats and coolstats.ShouldSkipUwUDataChunk and coolstats.ShouldSkipUwUDataChunk(coolstatsUwUData, chunkStartIndex) then",
+            "\treturn",
+            "end",
             "local chunk = {",
             *chunk_players,
             "}",
-            "if coolstatsUwUData and coolstatsUwUData.players then",
+            "if coolstats and coolstats.InsertUwUDataChunk then",
+            "\tcoolstats.InsertUwUDataChunk(coolstatsUwUData, chunk)",
+            "elseif coolstatsUwUData and coolstatsUwUData.players then",
             "\tfor key, player in pairs(chunk) do",
             "\t\tcoolstatsUwUData.players[key] = player",
             "\tend",
             "end",
+            "chunk = nil",
         ]
         chunk_path.write_text("\n".join(chunk_lines), encoding="utf-8")
+        chunk_start = chunk_end + 1
 
     for stale_chunk_path in path.parent.glob(f"{path.stem}_[0-9][0-9]{path.suffix}"):
         if stale_chunk_path not in active_chunk_paths:
@@ -1937,6 +2109,7 @@ def main() -> int:
     parser.add_argument("--character-bosses", action="store_true", help="Use the legacy one-character-at-a-time boss endpoint.")
     parser.add_argument("--bulk-top-limit", type=int, default=DEFAULT_BULK_TOP_LIMIT, choices=[10, 100, 1000, 10000, 50000])
     parser.add_argument("--bulk-checkpoint-every", type=int, default=DEFAULT_BULK_CHECKPOINT_EVERY)
+    parser.add_argument("--duplicate-workers", type=int, default=DEFAULT_DUPLICATE_WORKERS, help="Parallel workers for ambiguous duplicate-name verification.")
     parser.add_argument("--boss-workers", type=int, default=1)
     parser.add_argument("--boss-limit", type=int, default=None, help="Maximum character-detail requests; applies with --character-bosses or targeted post-bulk repair.")
     parser.add_argument("--character-timeout", type=int, default=12)
@@ -2013,7 +2186,7 @@ def main() -> int:
         log("error: this phase requires its retained historical boss lock; --no-preserve-previous is not allowed")
         return 1
 
-    data = collect_scores(args.server, args.max_per_spec, args.timeout, args.retries, args.sleep)
+    data = collect_scores(args.server, args.max_per_spec, args.timeout, args.retries, args.sleep, args.duplicate_workers)
     data["phase_id"] = realm_profile["phase_id"]
     data["default_raid_name"] = realm_profile["default_raid_name"]
     data["historical_overall_phase_id"] = realm_profile.get("historical_overall_phase_id")
@@ -2048,7 +2221,7 @@ def main() -> int:
         boss_targets = set(manual_boss_targets)
         boss_targets.update(duplicate_boss_targets)
         if duplicate_boss_targets:
-            log("automatic duplicate-name boss repair: " + ", ".join(sorted(duplicate_boss_targets)))
+            log("automatic duplicate-name boss repair: " + format_name_preview(duplicate_boss_targets))
         use_character_bosses = args.character_bosses or (bool(boss_targets) and not (args.weekly or args.weekly_full))
         if use_character_bosses:
             add_character_bosses(
@@ -2079,7 +2252,7 @@ def main() -> int:
             )
             if boss_targets:
                 target_limit = max(args.boss_limit or 0, len(boss_targets))
-                log("targeted character boss repair after bulk mode: " + ", ".join(sorted(boss_targets)))
+                log("targeted character boss repair after bulk mode: " + format_name_preview(boss_targets))
                 add_character_bosses(
                     args.server,
                     data,
@@ -2124,18 +2297,20 @@ def main() -> int:
         except ValueError as exc:
             log(f"error: {exc}")
             return 1
-    write_lua(args.lua_output, args.server, args.max_per_spec, generated_at, data)
+    chunk_count = get_lua_player_chunk_count(len(data["players"]))
+    write_lua(args.lua_output, args.server, args.max_per_spec, generated_at, data, chunk_count)
     write_json(args.json_output, args.server, args.max_per_spec, generated_at, data)
     active_phase_id = get_active_phase_id(args.server)
     should_write_manifest = realm_profile["phase_id"] == active_phase_id or args.activate_phase
     manifest_path = (
-        write_data_addon_manifest(args.lua_output, args.server, realm_profile["phase_id"], realm_profile)
+        write_data_addon_manifest(args.lua_output, args.server, realm_profile["phase_id"], realm_profile, len(data["players"]), chunk_count)
         if should_write_manifest
         else None
     )
 
     log(f"wrote {args.lua_output}")
     log(f"wrote {args.json_output}")
+    log(f"Lua player chunks: {chunk_count} (~{LUA_PLAYER_TARGET_CHUNK_SIZE} players target, max {LUA_PLAYER_MAX_CHUNK_COUNT})")
     if manifest_path:
         log(f"wrote {manifest_path}")
     elif realm_profile["phase_id"] != active_phase_id:

@@ -49,13 +49,33 @@ def require_match(text: str, pattern: str, message: str) -> None:
         raise RuntimeError(message)
 
 
+def toc_metadata_int(text: str, key: str) -> int:
+    match = re.search(rf"^##\s+{re.escape(key)}:\s*(\d+)\s*$", text, flags=re.MULTILINE)
+    if not match:
+        raise RuntimeError(f"Rising Gods data TOC is missing {key}.")
+    return int(match.group(1))
+
+
+def expected_player_chunk_count(player_count: int) -> int:
+    target_chunk_size = 3000
+    min_chunk_count = 6
+    max_chunk_count = 16
+    minimum_players = 6000
+    if player_count <= 0:
+        return 1
+    chunk_count = max(1, (player_count + target_chunk_size - 1) // target_chunk_size)
+    if player_count >= minimum_players:
+        chunk_count = max(min_chunk_count, chunk_count)
+    return min(max_chunk_count, chunk_count)
+
+
 def audit_data_addon(
     data_addon_path: Path,
     expected_version: str = "",
     expected_max_per_spec: int = 600,
     min_players: int = 6000,
     max_players: int = 20000,
-    expected_chunk_count: int = 6,
+    expected_chunk_count: int = 0,
     allow_temporary_folder_name: bool = False,
     quiet: bool = False,
 ) -> Dict[str, int]:
@@ -106,6 +126,21 @@ def audit_data_addon(
             toc_text,
             f"## Version: {expected_version}",
             f"Rising Gods data TOC version does not match {expected_version}.",
+        )
+
+    toc_player_count = toc_metadata_int(toc_text, "X-coolstats-PlayerCount")
+    toc_chunk_count = toc_metadata_int(toc_text, "X-coolstats-PlayerChunks")
+    calculated_chunk_count = expected_player_chunk_count(toc_player_count)
+    if toc_chunk_count != calculated_chunk_count:
+        raise RuntimeError(
+            f"Rising Gods data TOC has {toc_chunk_count} chunks for {toc_player_count} players; "
+            f"expected {calculated_chunk_count}."
+        )
+    if expected_chunk_count <= 0:
+        expected_chunk_count = toc_chunk_count
+    elif expected_chunk_count != toc_chunk_count:
+        raise RuntimeError(
+            f"Rising Gods data TOC chunk count {toc_chunk_count} does not match expected {expected_chunk_count}."
         )
 
     expected_data_files = ["coolstats_uwu_data.lua"] + [
@@ -166,6 +201,29 @@ def audit_data_addon(
         "players = {},",
         "Generated header must initialize an empty players table before chunks load.",
     )
+    require_match(
+        header_text,
+        rf"totalPlayers\s*=\s*{toc_player_count},",
+        "Generated header totalPlayers does not match TOC metadata.",
+    )
+    require_match(
+        header_text,
+        rf"playerChunkCount\s*=\s*{toc_chunk_count},",
+        "Generated header playerChunkCount does not match TOC metadata.",
+    )
+    load_steps_match = re.search(r"playerLoadSteps\s*=\s*\{([^}]*)\}", header_text)
+    if not load_steps_match:
+        raise RuntimeError("Generated header is missing playerLoadSteps.")
+    load_steps = [int(value.strip()) for value in load_steps_match.group(1).split(",") if value.strip()]
+    if len(load_steps) != toc_chunk_count + 1:
+        raise RuntimeError(
+            f"Generated header playerLoadSteps has {len(load_steps)} entries; expected {toc_chunk_count + 1}."
+        )
+    if load_steps[0] != 0 or load_steps[-1] != toc_player_count:
+        raise RuntimeError(f"Generated header playerLoadSteps must start at 0 and end at {toc_player_count}.")
+    for index in range(1, len(load_steps)):
+        if load_steps[index] < load_steps[index - 1]:
+            raise RuntimeError("Generated header playerLoadSteps must be non-decreasing.")
 
     for index, boss in enumerate(REQUIRED_BOSSES, start=1):
         require_contains(header_text, f'[{index}] = "{boss}"', f"Generated header is missing boss {index}: {boss}")
@@ -175,6 +233,17 @@ def audit_data_addon(
     row_pattern = re.compile(r'(?m)^[\t ]+\["([^"]+)"\][\t ]*=')
     for chunk in chunk_files:
         text = read_text(chunk)
+        chunk_index_match = re.search(r"(\d\d)\.lua$", chunk.name)
+        if not chunk_index_match:
+            raise RuntimeError(f"Unexpected chunk filename: {chunk.name}")
+        chunk_index = int(chunk_index_match.group(1))
+        expected_start = load_steps[chunk_index - 1] + 1
+        require_match(
+            text,
+            rf"local\s+chunkStartIndex\s*=\s*{expected_start}",
+            f"{chunk.name} has an incorrect chunkStartIndex guard.",
+        )
+        require_contains(text, "ShouldSkipUwUDataChunk", f"{chunk.name} is missing the chunk-skip guard.")
         require_contains(text, "local chunk = {", f"{chunk.name} does not define a chunk table.")
         require_contains(text, "coolstatsUwUData.players", f"{chunk.name} does not merge into coolstatsUwUData.players.")
         require_contains(text, "for key, player in pairs(chunk) do", f"{chunk.name} does not merge chunk rows safely.")
@@ -191,6 +260,8 @@ def audit_data_addon(
         chunk_counts.append(len(matches))
 
     player_count = len(player_keys)
+    if player_count != toc_player_count:
+        raise RuntimeError(f"Generated data contains {player_count} player rows but TOC metadata says {toc_player_count}.")
     if player_count < min_players:
         raise RuntimeError(f"Generated data contains only {player_count} players; refusing to install.")
     if player_count > max_players:
@@ -198,7 +269,8 @@ def audit_data_addon(
 
     min_chunk = min(chunk_counts)
     max_chunk = max(chunk_counts)
-    if max_chunk - min_chunk > expected_chunk_count:
+    allowed_chunk_spread = max(30, expected_chunk_count * 5)
+    if max_chunk - min_chunk > allowed_chunk_spread:
         raise RuntimeError(f"Generated data chunks are not balanced: min={min_chunk} max={max_chunk}.")
 
     result: Dict[str, int] = {
@@ -224,7 +296,7 @@ def main() -> int:
     parser.add_argument("--expected-max-per-spec", type=int, default=600)
     parser.add_argument("--min-players", type=int, default=6000)
     parser.add_argument("--max-players", type=int, default=20000)
-    parser.add_argument("--expected-chunk-count", type=int, default=6)
+    parser.add_argument("--expected-chunk-count", type=int, default=0)
     parser.add_argument("--allow-temporary-folder-name", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()

@@ -183,8 +183,14 @@ local function RefreshAddon()
 	if coolstats.RefreshItemLevelOptionsPanel then
 		coolstats.RefreshItemLevelOptionsPanel()
 	end
+	if coolstats.RefreshLootToastOptionsPanel then
+		coolstats.RefreshLootToastOptionsPanel()
+	end
 	if coolstats.RefreshTooltipOptionsPanel then
 		coolstats.RefreshTooltipOptionsPanel()
+	end
+	if coolstats.cachedPlayerBrowser and coolstats.RefreshCachedPlayerBrowser then
+		coolstats.RefreshCachedPlayerBrowser(true)
 	end
 end
 
@@ -280,6 +286,191 @@ local function UpdateQualitySliderText(slider)
 	end
 end
 
+local function GetRealmPlayerLimitTotal()
+	local total = coolstats.GetRealmDataTotalPlayerCount and coolstats.GetRealmDataTotalPlayerCount() or nil
+	total = math.floor((tonumber(total) or 0) + 0.5)
+	if total < 0 then
+		total = 0
+	end
+	return total
+end
+
+local function GetDefaultPlayerLimitChunkCount(total)
+	total = math.floor((tonumber(total) or 0) + 0.5)
+	if total <= 0 then
+		return 1
+	end
+	local chunkCount = math.ceil(total / 3000)
+	if total >= 6000 and chunkCount < 6 then
+		chunkCount = 6
+	end
+	if chunkCount > 16 then
+		chunkCount = 16
+	end
+	if chunkCount < 1 then
+		chunkCount = 1
+	end
+	return chunkCount
+end
+
+local function GetRealmPlayerLimitSteps()
+	if coolstats.GetRealmDataPlayerLoadSteps then
+		local steps = coolstats.GetRealmDataPlayerLoadSteps()
+		if type(steps) == "table" and #steps > 0 then
+			return steps
+		end
+	end
+	local total = GetRealmPlayerLimitTotal()
+	if total <= 0 then
+		return { 0 }
+	end
+	local steps = { 0 }
+	local chunkCount = GetDefaultPlayerLimitChunkCount(total)
+	local chunkSize = math.ceil(total / chunkCount)
+	for index = 1, chunkCount do
+		local value = math.min(total, index * chunkSize)
+		if value > steps[#steps] then
+			steps[#steps + 1] = value
+		end
+	end
+	if steps[#steps] ~= total then
+		steps[#steps + 1] = total
+	end
+	return steps
+end
+
+local function RoundUwUPlayerLoadLimit(value, total)
+	total = math.floor((tonumber(total) or GetRealmPlayerLimitTotal()) + 0.5)
+	value = tonumber(value) or total
+	if total <= 0 then
+		return 0
+	end
+	local steps = GetRealmPlayerLimitSteps()
+	local best = steps[#steps] or total
+	local bestDistance = math.abs(value - best)
+	for index = 1, #steps do
+		local stepValue = math.floor((tonumber(steps[index]) or 0) + 0.5)
+		local distance = math.abs(value - stepValue)
+		if distance < bestDistance then
+			best = stepValue
+			bestDistance = distance
+		end
+	end
+	return math.max(0, math.min(total, best))
+end
+
+local function GetUwUPlayerLoadStepIndexForLimit(limit, total, steps)
+	steps = type(steps) == "table" and steps or GetRealmPlayerLimitSteps()
+	local chunkCount = math.max(0, #steps - 1)
+	if limit == nil then
+		return chunkCount
+	end
+	limit = RoundUwUPlayerLoadLimit(limit, total)
+	local bestIndex = chunkCount
+	local bestDistance = math.huge
+	for index = 0, chunkCount do
+		local stepValue = math.floor((tonumber(steps[index + 1]) or 0) + 0.5)
+		local distance = math.abs(limit - stepValue)
+		if distance < bestDistance then
+			bestIndex = index
+			bestDistance = distance
+		end
+	end
+	return bestIndex
+end
+
+local function ClampUwUPlayerLoadStepIndex(value, steps)
+	steps = type(steps) == "table" and steps or GetRealmPlayerLimitSteps()
+	local chunkCount = math.max(0, #steps - 1)
+	local index = math.floor((tonumber(value) or chunkCount) + 0.5)
+	if index < 0 then
+		return 0
+	elseif index > chunkCount then
+		return chunkCount
+	end
+	return index
+end
+
+local function GetUwUPlayerLoadLimitForStepIndex(index, steps, total)
+	steps = type(steps) == "table" and steps or GetRealmPlayerLimitSteps()
+	total = math.floor((tonumber(total) or GetRealmPlayerLimitTotal()) + 0.5)
+	index = ClampUwUPlayerLoadStepIndex(index, steps)
+	local value = math.floor((tonumber(steps[index + 1]) or 0) + 0.5)
+	if total > 0 and value > total then
+		return total
+	end
+	return value
+end
+
+local function GetUwUPlayerLoadSliderValue()
+	local total = GetRealmPlayerLimitTotal()
+	local raw = tonumber(GetTooltipOptions().uwuPlayerLoadLimit)
+	local steps = GetRealmPlayerLimitSteps()
+	if raw == nil then
+		return math.max(0, #steps - 1)
+	end
+	return GetUwUPlayerLoadStepIndexForLimit(raw, total, steps)
+end
+
+local function GetUwUPlayerLoadChunkText(loadedChunks, steps)
+	steps = type(steps) == "table" and steps or GetRealmPlayerLimitSteps()
+	local chunkCount = math.max(0, #steps - 1)
+	if chunkCount <= 0 then
+		return nil
+	end
+	loadedChunks = ClampUwUPlayerLoadStepIndex(loadedChunks, steps)
+	return string.format(" (%d/%d chunks)", loadedChunks, chunkCount)
+end
+
+local function GetUwUPlayerLoadReloadText(limit, total)
+	local loaded = coolstats.GetRealmDataLoadedPlayerCount and coolstats.GetRealmDataLoadedPlayerCount() or nil
+	loaded = loaded and math.floor((tonumber(loaded) or 0) + 0.5) or nil
+	total = math.floor((tonumber(total) or 0) + 0.5)
+	limit = math.floor((tonumber(limit) or total) + 0.5)
+	if loaded and total > 0 and loaded < total and limit > loaded then
+		return string.format(" after /reload (%d loaded now)", loaded)
+	end
+	return ""
+end
+
+local function UpdateUwUPlayerLoadLimitSliderRange(slider)
+	if not slider then
+		return
+	end
+	local total = GetRealmPlayerLimitTotal()
+	local steps = GetRealmPlayerLimitSteps()
+	local chunkCount = math.max(0, #steps - 1)
+	local maxValue = chunkCount > 0 and chunkCount or 1
+	slider.totalPlayers = total
+	slider.playerLoadSteps = steps
+	slider.playerLoadChunkCount = chunkCount
+	slider:SetMinMaxValues(0, maxValue)
+	slider:SetValueStep(1)
+	_G[slider:GetName() .. "Low"]:SetText("0")
+	_G[slider:GetName() .. "High"]:SetText(tostring(total))
+end
+
+local function UpdateUwUPlayerLoadLimitSliderText(slider)
+	if not slider then
+		return
+	end
+	local total = slider.totalPlayers or GetRealmPlayerLimitTotal()
+	local steps = slider.playerLoadSteps or GetRealmPlayerLimitSteps()
+	local chunkCount = math.max(0, #steps - 1)
+	local stepIndex = ClampUwUPlayerLoadStepIndex(slider:GetValue(), steps)
+	local limit = GetUwUPlayerLoadLimitForStepIndex(stepIndex, steps, total)
+	local text = _G[slider:GetName() .. "Text"]
+	if text then
+		if total <= 0 then
+			text:SetText("UwU data load: no realm data found")
+		elseif stepIndex >= chunkCount then
+			text:SetText("UwU data load: All " .. tostring(total) .. " players" .. GetUwUPlayerLoadReloadText(total, total))
+		else
+			text:SetText("UwU data load: Top " .. tostring(limit) .. " / " .. tostring(total) .. " players" .. (GetUwUPlayerLoadChunkText(stepIndex, steps) or "") .. GetUwUPlayerLoadReloadText(limit, total))
+		end
+	end
+end
+
 local function CreateSliderResetButton(parent, slider, yOffset, defaultValue, onReset)
 	if not slider then
 		return nil
@@ -354,6 +545,76 @@ local function CreateQualitySlider(parent, yOffset)
 	end, function(self, value)
 		GetLootOptions().minQuality = value
 		UpdateQualitySliderText(self)
+	end)
+	return slider
+end
+
+local function CreateUwUPlayerLoadLimitSlider(parent, yOffset)
+	local slider = CreateFrame("Slider", "coolstatsUwUPlayerLoadLimitSlider", parent, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
+	slider:SetWidth(240)
+	slider.controlType = "uwuPlayerLoadLimit"
+	UpdateUwUPlayerLoadLimitSliderRange(slider)
+	local label = _G[slider:GetName() .. "Text"]
+	if label then
+		label:ClearAllPoints()
+		label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 2)
+		label:SetWidth(510)
+		label:SetJustifyH("LEFT")
+	end
+	slider:SetScript("OnValueChanged", function(self, value)
+		local total = self.totalPlayers or GetRealmPlayerLimitTotal()
+		local steps = self.playerLoadSteps or GetRealmPlayerLimitSteps()
+		local chunkCount = math.max(0, #steps - 1)
+		local rounded = ClampUwUPlayerLoadStepIndex(value, steps)
+		if self.updating then
+			UpdateUwUPlayerLoadLimitSliderText(self)
+			return
+		end
+		if self:GetValue() ~= rounded then
+			self:SetValue(rounded)
+			return
+		end
+		local options = GetTooltipOptions()
+		local previous = tonumber(options.uwuPlayerLoadLimit)
+		local limit = GetUwUPlayerLoadLimitForStepIndex(rounded, steps, total)
+		if total > 0 and rounded >= chunkCount then
+			options.uwuPlayerLoadLimit = nil
+		else
+			options.uwuPlayerLoadLimit = limit
+		end
+		if previous ~= tonumber(options.uwuPlayerLoadLimit) then
+			self.pendingReloadPrompt = true
+		end
+		UpdateUwUPlayerLoadLimitSliderText(self)
+	end)
+	slider:SetScript("OnMouseUp", function(self)
+		RefreshAddon()
+		if self.pendingReloadPrompt and coolstats.ShowUwUDataReloadPrompt then
+			self.pendingReloadPrompt = nil
+			coolstats.ShowUwUDataReloadPrompt()
+		end
+	end)
+	slider:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("UwU Data Player Limit", 1, 0.82, 0.16)
+		GameTooltip:AddLine("Snaps to generated data chunks. Lowering updates the browser immediately. Increasing above loaded chunks needs /reload.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	slider:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	parent.uwuPlayerLoadLimitSlider = slider
+	parent.controls[#parent.controls + 1] = slider
+	CreateSliderResetButton(parent, slider, yOffset, function()
+		return math.max(0, #GetRealmPlayerLimitSteps() - 1)
+	end, function(self, value)
+		GetTooltipOptions().uwuPlayerLoadLimit = nil
+		UpdateUwUPlayerLoadLimitSliderRange(self)
+		UpdateUwUPlayerLoadLimitSliderText(self)
+		if coolstats.ShowUwUDataReloadPrompt then
+			coolstats.ShowUwUDataReloadPrompt()
+		end
 	end)
 	return slider
 end
@@ -829,7 +1090,10 @@ function coolstats.ResetOptionsPanelDefaults()
 		logsSummary = true,
 		logsBossDetails = true,
 		cacheOnHover = true,
+		cacheInspectGear = true,
+		cacheInspectTalents = true,
 	}
+	db.tooltip.uwuPlayerLoadLimit = nil
 	db.itemLevelBadges = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.itemLevelBadges) or {
 		position = "default",
 		fontSize = 15,
@@ -895,6 +1159,12 @@ function coolstats.RefreshTooltipOptionsPanel()
 		local control = panel.controls[index]
 		if control.getter then
 			control:SetChecked(control.getter())
+		elseif control.controlType == "uwuPlayerLoadLimit" then
+			control.updating = true
+			UpdateUwUPlayerLoadLimitSliderRange(control)
+			control:SetValue(GetUwUPlayerLoadSliderValue())
+			control.updating = nil
+			UpdateUwUPlayerLoadLimitSliderText(control)
 		end
 	end
 end
@@ -913,8 +1183,121 @@ function coolstats.ResetTooltipOptionsPanelDefaults()
 		logsSummary = true,
 		logsBossDetails = true,
 		cacheOnHover = true,
+		cacheInspectGear = true,
+		cacheInspectTalents = true,
+	}
+	db.tooltip.uwuPlayerLoadLimit = nil
+	RefreshAddon()
+end
+
+function coolstats.RefreshLootToastOptionsPanel()
+	local panel = coolstats.lootToastOptionsPanel
+	if not panel then
+		return
+	end
+	for index = 1, #panel.controls do
+		local control = panel.controls[index]
+		if control.getter then
+			control:SetChecked(control.getter())
+		elseif control.controlType == "lootQuality" then
+			control.updating = true
+			control:SetValue(math.floor((GetLootOptions().minQuality or 3) + 0.5))
+			control.updating = nil
+			UpdateQualitySliderText(control)
+		end
+	end
+	if panel.qualitySlider then
+		panel.qualitySlider.updating = true
+		panel.qualitySlider:SetValue(math.floor((GetLootOptions().minQuality or 3) + 0.5))
+		panel.qualitySlider.updating = nil
+		UpdateQualitySliderText(panel.qualitySlider)
+	end
+end
+
+function coolstats.ResetLootToastOptionsPanelDefaults()
+	local db = GetDB()
+	local defaults = GetDefaults()
+	if not db or not defaults then
+		return
+	end
+	db.lootAlerts = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.lootAlerts) or {
+		enabled = true,
+		minQuality = 3,
+		selfLoot = true,
+		groupRolls = true,
+		professions = false,
+		sound = true,
+		animations = true,
 	}
 	RefreshAddon()
+end
+
+function coolstats.CreateLootToastOptionsPanel()
+	if coolstats.lootToastOptionsPanel then
+		return coolstats.lootToastOptionsPanel
+	end
+
+	local panel = CreateFrame("Frame", "coolstatsLootToastOptionsPanel", UIParent)
+	panel.name = "Loot Toasts"
+	panel.parent = "coolstats"
+	panel.controls = {}
+	panel.refresh = coolstats.RefreshLootToastOptionsPanel
+	panel.default = coolstats.ResetLootToastOptionsPanelDefaults
+	panel.okay = function() end
+	panel.cancel = function() end
+	coolstats.lootToastOptionsPanel = panel
+
+	local content = CreateScrollableOptionsContent(panel, "coolstatsLootToastOptions", 450)
+	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
+	title:SetText("coolstats Loot Toasts")
+	title:SetTextColor(0.0, 0.75, 1.0)
+
+	CreateDescription(content, "Choose which loot events create popups and how loud or flashy those popups should be.", -42)
+
+	CreateHeading(content, "Loot Toasts", -78)
+	CreateCheck(content, "coolstatsOptionLootEnabled", "Enable loot toasts", -104, function()
+		return GetLootOptions().enabled
+	end, function(value)
+		GetLootOptions().enabled = value
+	end, "Show loot popups for items that pass the quality threshold.")
+	CreateQualitySlider(content, -152)
+
+	CreateHeading(content, "Sources", -206)
+	CreateCheck(content, "coolstatsOptionLootSelf", "Show items I loot", -232, function()
+		return GetLootOptions().selfLoot
+	end, function(value)
+		GetLootOptions().selfLoot = value
+	end, "Show a toast when you personally loot an item.")
+	CreateCheck(content, "coolstatsOptionLootRolls", "Show group-roll wins", -260, function()
+		return GetLootOptions().groupRolls
+	end, function(value)
+		GetLootOptions().groupRolls = value
+	end, "Show a single toast when you win a group loot roll; the later looted-item message is suppressed.")
+	CreateCheck(content, "coolstatsOptionLootProfessions", "Show profession crafts", -288, function()
+		return GetLootOptions().professions
+	end, function(value)
+		GetLootOptions().professions = value
+	end, "Show loot toasts for items you create with professions.")
+
+	CreateHeading(content, "Presentation", -332)
+	CreateCheck(content, "coolstatsOptionLootSound", "Play loot toast sounds", -358, function()
+		return GetLootOptions().sound
+	end, function(value)
+		GetLootOptions().sound = value
+	end, "Play a short sound when a loot toast appears.")
+	CreateCheck(content, "coolstatsOptionLootAnimations", "Play loot toast glows", -386, function()
+		return GetLootOptions().animations
+	end, function(value)
+		GetLootOptions().animations = value
+	end, "Play the shine/glow flourish on loot toasts.")
+
+	if InterfaceOptions_AddCategory then
+		InterfaceOptions_AddCategory(panel)
+	end
+	panel:SetScript("OnShow", coolstats.RefreshLootToastOptionsPanel)
+	coolstats.RefreshLootToastOptionsPanel()
+	return panel
 end
 
 function coolstats.CreateTooltipOptionsPanel()
@@ -923,7 +1306,7 @@ function coolstats.CreateTooltipOptionsPanel()
 	end
 
 	local panel = CreateFrame("Frame", "coolstatsTooltipOptionsPanel", UIParent)
-	panel.name = "Tooltip"
+	panel.name = "Tooltip & Cache"
 	panel.parent = "coolstats"
 	panel.controls = {}
 	panel.refresh = coolstats.RefreshTooltipOptionsPanel
@@ -932,14 +1315,14 @@ function coolstats.CreateTooltipOptionsPanel()
 	panel.cancel = function() end
 	coolstats.tooltipOptionsPanel = panel
 
-	local content = CreateScrollableOptionsContent(panel, "coolstatsTooltipOptions", 410)
+	local content = CreateScrollableOptionsContent(panel, "coolstatsTooltipOptions", 560)
 	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
-	title:SetText("coolstats Tooltip")
+	title:SetText("coolstats Tooltip & Cache")
 	title:SetTextColor(0.0, 0.75, 1.0)
 
-	CreateDescription(content, "Choose each coolstats feature that appears when hovering over players.", -42)
-	CreateHeading(content, "Player Details", -78)
+	CreateDescription(content, "Choose what appears on player tooltips and how inspect-based caches update.", -42)
+	CreateHeading(content, "Tooltip Lines", -78)
 	CreateCheck(content, "coolstatsTooltipGuildRank", "Show guild rank", -104, function()
 		return GetTooltipOptions().guildRank ~= false
 	end, function(value)
@@ -955,24 +1338,41 @@ function coolstats.CreateTooltipOptionsPanel()
 	end, function(value)
 		GetTooltipOptions().target = value
 	end, "Show who the hovered player is currently targeting.")
-	CreateCheck(content, "coolstatsTooltipCacheHover", "Cache inspectable gear on hover", -188, function()
-		return GetTooltipOptions().cacheOnHover ~= false
-	end, function(value)
-		GetTooltipOptions().cacheOnHover = value
-	end, "Allow hovering an inspectable player to update their cached gear.")
 
-	CreateHeading(content, "Logs And Progress", -232)
-	CreateCheck(content, "coolstatsTooltipLogsSummary", "Show logs summary", -258, function()
+	CreateHeading(content, "Inspect Cache", -200)
+	CreateCheck(content, "coolstatsTooltipCacheGear", "Cache inspectable gear", -226, function()
+		local options = GetTooltipOptions()
+		if options.cacheInspectGear == nil and options.cacheOnHover ~= nil then
+			return options.cacheOnHover ~= false
+		end
+		return options.cacheInspectGear ~= false
+	end, function(value)
+		local options = GetTooltipOptions()
+		options.cacheInspectGear = value
+		options.cacheOnHover = value
+	end, "Allow inspect, target, hover, and lookup flows to update cached gear snapshots.")
+	CreateCheck(content, "coolstatsTooltipCacheTalents", "Cache inspectable talents", -254, function()
+		return GetTooltipOptions().cacheInspectTalents ~= false
+	end, function(value)
+		GetTooltipOptions().cacheInspectTalents = value
+	end, "Allow inspect and talent-panel flows to update cached talent snapshots.")
+
+	CreateHeading(content, "Player Browser", -298)
+	CreateUwUPlayerLoadLimitSlider(content, -324)
+	CreateDescription(content, "Lower values retain fewer current-realm UwU players after /reload. Increasing above the data already loaded this session also needs /reload.", -356)
+
+	CreateHeading(content, "Logs And Progress", -398)
+	CreateCheck(content, "coolstatsTooltipLogsSummary", "Show logs summary", -424, function()
 		return GetTooltipOptions().logsSummary ~= false
 	end, function(value)
 		GetTooltipOptions().logsSummary = value
 	end, "Show the player's best available logs score.")
-	CreateCheck(content, "coolstatsTooltipLogsBosses", "Show boss parses while holding Alt", -286, function()
+	CreateCheck(content, "coolstatsTooltipLogsBosses", "Show boss parses while holding Alt", -452, function()
 		return GetTooltipOptions().logsBossDetails ~= false
 	end, function(value)
 		GetTooltipOptions().logsBossDetails = value
 	end, "Show individual boss parses while Alt is held.")
-	CreateCheck(content, "coolstatsTooltipRaidFallback", "Show raid progress summary", -314, function()
+	CreateCheck(content, "coolstatsTooltipRaidFallback", "Show raid progress summary", -480, function()
 		return GetTooltipOptions().raidProgressFallback ~= false
 	end, function(value)
 		GetTooltipOptions().raidProgressFallback = value
@@ -1142,14 +1542,14 @@ function coolstats.CreateOptionsPanel()
 	panel.cancel = function() end
 	coolstats.optionsPanel = panel
 
-	local content = CreateScrollableOptionsContent(panel, "coolstatsMainOptions", 620)
+	local content = CreateScrollableOptionsContent(panel, "coolstatsMainOptions", 360)
 
 	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
 	title:SetText("coolstats")
 	title:SetTextColor(0.0, 0.75, 1.0)
 
-	CreateDescription(content, "Character panel, stat popouts, favourites, and loot alert settings.", -42)
+	CreateDescription(content, "Core character-panel controls. Detailed feature settings live in the child pages on the left.", -42)
 
 	CreateHeading(content, "Character Panel", -78)
 	CreateCheck(content, "coolstatsOptionCharacterPanel", "Enable character panel features", -104, function()
@@ -1182,45 +1582,16 @@ function coolstats.CreateOptionsPanel()
 		GetDB().cleanGearScoreTooltips = value
 	end, "Hide noisy GearScore lines from item tooltips.")
 
-	CreateHeading(content, "Loot Alerts", -264)
-	CreateCheck(content, "coolstatsOptionLootEnabled", "Enable loot alerts", -290, function()
-		return GetLootOptions().enabled
-	end, function(value)
-		GetLootOptions().enabled = value
-	end, "Show pretty loot popups for items that pass the quality threshold.")
-	CreateQualitySlider(content, -338)
-	CreateCheck(content, "coolstatsOptionLootSelf", "Show items I loot", -392, function()
-		return GetLootOptions().selfLoot
-	end, function(value)
-		GetLootOptions().selfLoot = value
-	end, "Show a toast when you personally loot an item.")
-	CreateCheck(content, "coolstatsOptionLootRolls", "Show group-roll wins", -420, function()
-		return GetLootOptions().groupRolls
-	end, function(value)
-		GetLootOptions().groupRolls = value
-	end, "Show a single toast when you win a group loot roll; the later looted-item message is suppressed.")
-	CreateCheck(content, "coolstatsOptionLootProfessions", "Show profession crafts", -448, function()
-		return GetLootOptions().professions
-	end, function(value)
-		GetLootOptions().professions = value
-	end, "Show loot toasts for items you create with professions.")
-	CreateCheck(content, "coolstatsOptionLootSound", "Play loot alert sounds", -476, function()
-		return GetLootOptions().sound
-	end, function(value)
-		GetLootOptions().sound = value
-	end, "Play a short sound when a loot alert appears.")
-	CreateCheck(content, "coolstatsOptionLootAnimations", "Play loot alert glows", -504, function()
-		return GetLootOptions().animations
-	end, function(value)
-		GetLootOptions().animations = value
-	end, "Play the shine/glow flourish on loot alerts.")
+	CreateHeading(content, "Detailed Settings", -264)
+	CreateDescription(content, "Tooltip & Cache controls player tooltips, UwU summary lines, and inspect cache behavior.\nLoot Toasts controls loot popups, quality threshold, sources, sound, and glow.\nItem Levels and Backgrounds control gear-slot badges and visual styling.", -290)
 
 	if InterfaceOptions_AddCategory then
 		InterfaceOptions_AddCategory(panel)
 	end
+	coolstats.CreateTooltipOptionsPanel()
+	coolstats.CreateLootToastOptionsPanel()
 	coolstats.CreateItemLevelOptionsPanel()
 	coolstats.CreateBackgroundOptionsPanel()
-	coolstats.CreateTooltipOptionsPanel()
 	panel:SetScript("OnShow", coolstats.RefreshOptionsPanel)
 	coolstats.RefreshOptionsPanel()
 	return panel
@@ -1229,6 +1600,26 @@ end
 function coolstats.OpenOptionsPanel()
 	local panel = coolstats.CreateOptionsPanel()
 	if InterfaceOptionsFrame_OpenToCategory then
+		InterfaceOptionsFrame_OpenToCategory(panel)
+	elseif InterfaceOptionsFrame_Show then
+		InterfaceOptionsFrame_Show()
+	end
+end
+
+function coolstats.OpenTooltipOptionsPanel()
+	coolstats.CreateOptionsPanel()
+	local panel = coolstats.CreateTooltipOptionsPanel and coolstats.CreateTooltipOptionsPanel() or coolstats.tooltipOptionsPanel
+	if InterfaceOptionsFrame_OpenToCategory and panel then
+		InterfaceOptionsFrame_OpenToCategory(panel)
+	elseif InterfaceOptionsFrame_Show then
+		InterfaceOptionsFrame_Show()
+	end
+end
+
+function coolstats.OpenLootToastOptionsPanel()
+	coolstats.CreateOptionsPanel()
+	local panel = coolstats.CreateLootToastOptionsPanel and coolstats.CreateLootToastOptionsPanel() or coolstats.lootToastOptionsPanel
+	if InterfaceOptionsFrame_OpenToCategory and panel then
 		InterfaceOptionsFrame_OpenToCategory(panel)
 	elseif InterfaceOptionsFrame_Show then
 		InterfaceOptionsFrame_Show()

@@ -30,7 +30,11 @@ addon `coolstats_Data_RisingGods`.
 10. Generated Lua is committed; raw JSON and cache files remain local and ignored.
 11. The release archive must contain only the core, cache, and Rising Gods data addons.
 12. Never point these scripts at the Warmane repository or its release directory.
-13. Generated player data is split into six Lua chunks to keep individual files conservative for the 3.3.5 client.
+13. Generated player data is split into dynamic Lua chunks using a roughly
+    3,000-player target, a six-chunk minimum for normal release-sized data, and
+    a 16-chunk ceiling. The TOC must include `X-coolstats-PlayerCount` and
+    `X-coolstats-PlayerChunks` so the in-game load slider and release audits
+    agree on what can be skipped after `/reload`.
 14. Lua 5.1 validation must pass before packaging or publishing a release.
 15. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
 16. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
@@ -57,8 +61,8 @@ The public updater must stay auditable and data-only:
   protected Windows folders fail early with a clear message;
 - back up the old live data addon before replacement;
 - validate generated Rising Gods metadata, encounter coverage, ranked-player
-  count, duplicate player keys, chunk distribution, and rankless-row guards
-  before install;
+  count, duplicate player keys, dynamic chunk metadata, chunk distribution, and
+  rankless-row guards before install;
 - resolve duplicate display names against the UwU character endpoint and run
   automatic boss-row repair for affected players;
 - validate the copied live data addon again after replacement, and restore the
@@ -89,7 +93,7 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg6
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.35-rg1
 ```
 
 Generated runtime data:
@@ -107,7 +111,7 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.34-rg2`.
+- Tag releases as `v<version>`, for example `v0.2.35-rg1`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane

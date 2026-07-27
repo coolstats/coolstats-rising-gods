@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.2.35-rg1 - 2026-07-27
+
+### Warmane parity port
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.35`.
+- Added the player-browser memory indicator, cache guidance tooltip, and
+  player data-load slider for lower-memory setups.
+- Added boss-filter browser improvements, boss DPS visibility, Statistics
+  drilldowns, and the updated tabard-style browser/log/statistics backdrops.
+- Added the plain-text log summary button and Rising Gods profile button flows.
+- Brought over the gear/talent cache fixes, including gem display recovery and
+  separate gear/talent cache toggles.
+- Brought over the safer detached UWU Logs right-click menu behavior for
+  player frames and chat names.
+
+### Rising Gods data architecture
+
+- Rebuilt generated UwU data around dynamic player chunks. The data TOC now
+  writes `X-coolstats-PlayerCount` and `X-coolstats-PlayerChunks`, and chunk
+  files include skip guards so the in-game data-load slider can avoid loading
+  lower-ranked chunks after `/reload`.
+- Kept Rising Gods ranked coverage at the established top 600 players per
+  class/specialization.
+- Updated the Windows and Linux public updaters, release validator, and data
+  integrity audits for dynamic chunk metadata.
+- Changed duplicate-name ranking repair to use bounded parallel workers and
+  capped preview logging, then run targeted character boss repair only for
+  resolved ambiguous names.
+
+### Data refresh
+
+- Refreshed Rising-Gods ICC data on 2026-07-27 with 10,075 active ranked
+  players.
+- Generated 6 dynamic player chunks with 10,075 total player rows.
+- Ran bulk boss refreshes for Icecrown Citadel, Toravon, Halion, and Anub'arak,
+  followed by targeted duplicate-name and Pentendo boss-row repair.
+
 ## 0.2.34-rg6 - 2026-07-25
 
 ### Rising Gods data integrity

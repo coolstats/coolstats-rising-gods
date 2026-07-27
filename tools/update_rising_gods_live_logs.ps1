@@ -411,6 +411,13 @@ function Assert-RisingGodsDataAddonShape {
 	if (-not (Select-String -LiteralPath $tocPath -Pattern "^## X-coolstats-Phase:\s*icc$" -Quiet)) {
 		throw "Rising Gods phase metadata is missing or incorrect in $tocPath"
 	}
+	$playerLine = Select-String -LiteralPath $tocPath -Pattern "^## X-coolstats-PlayerCount:\s*(\d+)$" | Select-Object -First 1
+	$chunkLine = Select-String -LiteralPath $tocPath -Pattern "^## X-coolstats-PlayerChunks:\s*(\d+)$" | Select-Object -First 1
+	if (-not $playerLine -or -not $chunkLine) {
+		throw "Rising Gods data TOC is missing player chunk metadata."
+	}
+	$tocPlayerCount = [int]$playerLine.Matches[0].Groups[1].Value
+	$tocChunkCount = [int]$chunkLine.Matches[0].Groups[1].Value
 
 	$headerText = [System.IO.File]::ReadAllText($headerPath, [System.Text.Encoding]::UTF8)
 	if (-not $headerText.Contains('realm = "Rising-Gods"')) {
@@ -418,6 +425,12 @@ function Assert-RisingGodsDataAddonShape {
 	}
 	if (-not [regex]::IsMatch($headerText, "maxPerSpec\s*=\s*\d+")) {
 		throw "Generated data header is missing maxPerSpec."
+	}
+	if (-not [regex]::IsMatch($headerText, ("totalPlayers\s*=\s*{0}," -f $tocPlayerCount))) {
+		throw "Generated data header totalPlayers does not match TOC metadata."
+	}
+	if (-not [regex]::IsMatch($headerText, ("playerChunkCount\s*=\s*{0}," -f $tocChunkCount))) {
+		throw "Generated data header playerChunkCount does not match TOC metadata."
 	}
 
 	$requiredBosses = @(
@@ -442,8 +455,8 @@ function Assert-RisingGodsDataAddonShape {
 	}
 
 	$chunks = @(Get-ChildItem -LiteralPath $chunkDir -File -Filter "coolstats_uwu_data_*.lua" | Sort-Object Name)
-	if ($chunks.Count -lt 6) {
-		throw "Expected at least 6 generated data chunks, found $($chunks.Count)."
+	if ($chunks.Count -ne $tocChunkCount) {
+		throw "Expected $tocChunkCount generated data chunks, found $($chunks.Count)."
 	}
 
 	$rowCount = 0
@@ -459,6 +472,9 @@ function Assert-RisingGodsDataAddonShape {
 	}
 	if ($rowCount -gt $MaxPlayers) {
 		throw "Generated data contains $rowCount players, above the safety ceiling of $MaxPlayers."
+	}
+	if ($rowCount -ne $tocPlayerCount) {
+		throw "Generated data contains $rowCount players but TOC metadata says $tocPlayerCount."
 	}
 
 	return $rowCount

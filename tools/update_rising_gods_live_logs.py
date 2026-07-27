@@ -248,6 +248,10 @@ def run_generator(
             str(max_per_spec),
             "--bulk-top-limit",
             str(bulk_top_limit),
+            "--duplicate-workers",
+            "8",
+            "--boss-workers",
+            "4",
         ])
         if lua_output is not None:
             command.extend(["--lua-output", str(lua_output)])

@@ -6,6 +6,10 @@ param(
 
 	[int]$BulkTopLimit = 10000,
 
+	[int]$DuplicateWorkers = 8,
+
+	[int]$BossWorkers = 4,
+
 	[string[]]$BossName = @(),
 
 	[int]$Timeout = 45,
@@ -59,7 +63,9 @@ switch ($Mode) {
 		$arguments += @(
 			"--weekly",
 			"--max-per-spec", $MaxPerSpec,
-			"--bulk-top-limit", $BulkTopLimit
+			"--bulk-top-limit", $BulkTopLimit,
+			"--duplicate-workers", $DuplicateWorkers,
+			"--boss-workers", $BossWorkers
 		)
 	}
 }

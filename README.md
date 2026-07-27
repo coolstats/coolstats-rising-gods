@@ -10,25 +10,27 @@ This is the Rising Gods edition of coolstats for World of Warcraft 3.3.5a. It
 is distributed separately from the Warmane edition and ships only the Rising
 Gods load-on-demand data addon.
 
-The core is based on upstream coolstats `v0.2.34`, while Rising Gods data,
+The core is based on upstream coolstats `v0.2.35`, while Rising Gods data,
 release packaging, and public updater tooling are maintained independently in
 this repository.
 
 ## Current Bundled Logs Coverage
 
-As of `0.2.34-rg6`, the bundled data is:
+As of `0.2.35-rg1`, the bundled data is:
 
 - **Realm:** Rising-Gods
 - **Phase:** ICC profile
-- **Bundled players:** 10,072 active ranked players
+- **Bundled players:** 10,075 active ranked players
 - **Ranked pull size:** top 600 players per class/specialization
+- **Generated player chunks:** 6 dynamic load chunks
 - **Encounters:** Icecrown Citadel, Toravon, Halion, and Anub'arak
-- **Generated:** 2026-07-25
+- **Generated:** 2026-07-27
 
 The Rising Gods dataset intentionally stays ranked-player-only. Boss
 leaderboards enrich players already present in the ranked coverage, but do not
-add rankless boss-only records. This keeps addon size and load behavior stable
-while still showing boss parses for covered players.
+add rankless boss-only records. Player data is ordered into dynamic chunks so
+lower data-load settings keep higher-ranked coverage first while still showing
+boss parses for covered players.
 
 ## Release Archive Layout
 
@@ -87,6 +89,8 @@ data.
 - Individual boss mode expands the browser to show a color-coded parse
   histogram with a smooth line overlay and a marker for the selected player
   when they have a log.
+- A bottom-right memory indicator opens cache and memory guidance, including
+  the player data-load slider for lower-memory setups.
 - The browser uses the coolstats tabard-style backdrop on the browser, logs,
   statistics, update, and analysis panels.
 
@@ -109,8 +113,11 @@ equipment and talent snapshots for later viewing.
 - Paperdoll-style cached gear panel with item icons, rarity borders, and item
   levels.
 - Cached GearScore, equipped item level, and derived combat ratings.
+- Cached gems and enchants in item detail views when the client exposes them
+  during inspection.
 - Cached talent builds with specialization backgrounds, rank indicators,
   specialization switching, and Blizzard-style talent tooltips when available.
+- Separate settings toggles for gear caching and talent caching.
 - Up to 1,500 recent player snapshots are retained.
 - Snapshots older than 14 days are automatically pruned.
 - The browser can clear the local inspection cache.
@@ -204,6 +211,9 @@ use numbered progress steps while they work. The Linux launcher is run through
 Refreshes also include duplicate-name safeguards for reused Rising Gods
 character names: ambiguous ranked rows are confirmed through the UwU Logs
 character endpoint, and affected boss rows are automatically repaired.
+Generated data uses the same dynamic chunk metadata as official releases, so
+the in-game player data-load slider can avoid loading lower-ranked chunks after
+the next `/reload`.
 
 ### Python 3 Requirement
 
@@ -259,9 +269,9 @@ The updater is intentionally readable source instead of a compiled executable.
 It performs no GitHub publishing, uses no credentials, requests no administrator
 rights, and ships no maintainer-local paths or saved install folders. It stages
 new data, audits Rising Gods metadata, encounter coverage, chunk balance,
-duplicate keys, duplicate-name repairs, ranked-player count, and rankless-row
-guards, then backs up the old live data addon before replacement. The installed
-data addon is audited again after replacement.
+player-load metadata, duplicate keys, duplicate-name repairs, ranked-player
+count, and rankless-row guards, then backs up the old live data addon before
+replacement. The installed data addon is audited again after replacement.
 
 If your WoW install is under a Windows protected folder such as `Program Files`,
 Windows may deny write access to `Interface/AddOns`. In that case, run the
@@ -352,7 +362,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.34-rg6
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.35-rg1
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for updater and release safety
