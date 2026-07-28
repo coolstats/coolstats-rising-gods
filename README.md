@@ -58,73 +58,116 @@ are intentionally separate.
 
 ### UwU Logs In Game
 
-coolstats brings UwU Logs data into the client without making web requests
-while the game is running.
+| Tooltip logs | Direct player lookup |
+| --- | --- |
+| <img src="https://i.imgur.com/LrILZSH.png" alt="UwU Logs inside a player tooltip" width="460"> | <img src="https://i.imgur.com/3obzqzY.png" alt="Direct UwU Logs lookup from a player menu" width="354"> |
 
+- Bundled realm-specific UwU Logs databases; no in-game web requests are made.
 - Overall raid score, best rank, and specialization-specific parse data.
-- Individual boss parses in tooltips by holding `ALT`.
-- Dedicated player log panels for every available specialization.
-- Parse colors and specialization icons for quick scanning.
-- Boss parse, boss rank, and boss DPS columns when a browser boss filter is
-  selected.
-- Side-by-side Log Analysis for comparing two players across shared bosses.
-- Direct player-log links through compact `[coolstats: Player]` chat tokens.
-- UwU Logs actions on supported player and chat-name right-click menus.
-- Quick player buttons for chat-linking logs and opening the Rising Gods
-  profile page.
+- Individual boss parses directly inside player tooltips by holding `ALT`.
+- Parse colors and specialization icons make results easy to scan.
+- Dedicated logs panels show every available specialization for a player.
+- Selecting an individual boss in the browser shows boss parse, boss rank, and
+  boss DPS directly in sortable columns.
+- Side-by-side compare mode cross-references your logs with another player.
+- UwU Logs action added to supported player and chat-name right-click menus.
+- Compact `[coolstats: Player]` chat links let users with a compatible addon
+  version open the linked player's logs directly.
+- Individual player log panels include quick buttons for chat-linking logs and
+  opening the player's Warmane Armory URL.
+- Raid-progress fallback checks can show achievement/statistic progress when
+  verified logs are missing on realms where the underlying client data is
+  reliable.
+
+The logs database is bundled with each addon release. coolstats does not make
+web requests while the game is running.
 
 ### Player Browser
 
-The player browser is the main table for searching and comparing the bundled
-data.
+![coolstats player browser](https://i.imgur.com/XiqahAm.png)
 
-- Search players by name with delayed filtering to avoid stutter.
-- Filter by class, main specialization, favourites, and individual boss.
-- Sort by logs, gear, talents, boss parse, boss rank, and boss DPS.
-- View main spec, off spec, log availability, cache availability, parse,
-  ranking, and boss-specific DPS in one row.
-- Favourite players so they stay near the top of the default list.
-- Right-click browser rows to compare logs, whisper, invite, view cached
-  talents, or favourite.
-- Individual boss mode expands the browser to show a color-coded parse
-  histogram with a smooth line overlay and a marker for the selected player
-  when they have a log.
-- A bottom-right memory indicator opens cache and memory guidance, including
-  the player data-load slider for lower-memory setups.
-- The browser uses the coolstats tabard-style backdrop on the browser, logs,
-  statistics, update, and analysis panels.
+The player browser brings all available player information into one searchable
+table:
 
-### Statistics Panel
-
-The Statistics view summarizes the current browser slice without forcing users
-to inspect rows one by one.
-
-- Spec representation bars with class-colored labels and spec icons.
-- Counts, percentages, and a bottom sum to verify the visible data total.
-- Boss selector for drilling into representation on a single encounter.
-- Cached calculations so switching filters stays responsive in the Wrath
-  client.
+- Search players by name with responsive, delayed filtering.
+- Filter by class, favourites, or main specialization.
+- Sort columns in ascending, descending, or default order.
+- Open a lightweight Statistics view for the current browser filters, showing
+  class/spec representation with counts, percentages, a total sum, and an
+  optional boss drilldown selector.
+- View main spec, off spec, parses, best rank, and cache availability.
+- See whether logs, gear, and talents are available before opening a player.
+- Favourite players so they remain at the top of the default list.
+- Right-click players to compare logs, whisper, invite, view cached talents,
+  or favourite them.
+- Open the normal logs and cached-armory panels by clicking a player.
+- Escape closes open coolstats windows from front to back.
+- Clear the locally stored inspection cache from inside the browser.
 
 ### Cached Gear And Talents
 
-When a player is available within inspection range, coolstats can store local
-equipment and talent snapshots for later viewing.
+| Cached gear | Cached talents |
+| --- | --- |
+| ![Cached gear armory](https://i.imgur.com/ZTgwrKq.png) | ![Cached talents](https://i.imgur.com/uTRNko9.png) |
 
-- Paperdoll-style cached gear panel with item icons, rarity borders, and item
+When a player is available within inspection range, clicking, inspecting, or
+looking them up can store a local snapshot of their equipment and talents.
+Those snapshots can then be viewed later, even when the player is no longer
+nearby.
+
+- Paperdoll-style cached gear view with item icons, rarity borders, and item
   levels.
-- Cached GearScore, equipped item level, and derived combat ratings.
-- Cached gems and enchants in item detail views when the client exposes them
-  during inspection.
+- Cached GearScore, equipped item level, and implied combat ratings.
 - Cached talent builds with specialization backgrounds, rank indicators,
   specialization switching, and Blizzard-style talent tooltips when available.
-- Separate settings toggles for gear caching and talent caching.
+- Separate Tooltip & Cache options can disable cached gear updates and cached
+  talent updates independently for players who prefer less inspect work.
+- The player browser shows cached gear/talent counts and coolstats memory at a
+  glance, with a Social-icon info button that opens the cache settings when
+  troubleshooting lag.
 - Up to 1,500 recent player snapshots are retained.
-- Snapshots older than 14 days are automatically pruned.
-- The browser can clear the local inspection cache.
+- Snapshots older than 14 days are automatically removed.
 
-Cached gear statistics are estimates derived from available item data. Some
-effects, gems, enchants, talents, buffs, and other character-specific modifiers
-may not be represented accurately.
+Cached gear statistics are estimates derived from item data. Cached gem presence
+is shown when available and enchant bonuses are included when available, while
+some effects, talents, buffs, socket bonuses, gem stat bonuses, and other
+character-specific modifiers may not be represented accurately.
+
+### Performance Analysis
+
+coolstats Player Statistics and Distributions
+
+| Player Statistics | Per-Boss Performance Distribution |
+| --- | --- |
+| <img src="https://i.imgur.com/gM7pajr.png" alt="Specialization Representation" width="320"> | <img src="https://i.imgur.com/aaIM5CQ.png" alt="Per Boss Performance Histrogramm" width="440"> |
+
+- Statistics panel from the player browser, with class/spec representation bars, counts, percentages, a bottom sum, and a realm-aware boss drilldown selector.
+- Individual Boss Performance analysis via the Parse Histogram - compare how you did against everyone else or your own class and specialization!
+
+
+### Optional Character Panel Improvements
+
+![coolstats character panel](https://i.imgur.com/rJTGDsf.png)
+
+| Character stats panel | Pop-out mode |
+| --- | --- |
+| <img src="https://i.imgur.com/hEzocO6.png" alt="Custom coolstats character stats panel" width="320"> | <img src="https://i.imgur.com/nxFxYDo.png" alt="Custom stat pop-out mode" width="440"> |
+
+coolstats also includes an optional overhaul of the default character panel:
+
+- Extended stats panel with GearScore, item level, ratings, durability, repair
+  cost, movement speed, and additional class-relevant statistics.
+- Reorderable stat rows and configurable sections with quick bulk toggles.
+- Favourite important statistics.
+- Detachable stat popouts.
+- Configurable backgrounds, opacity, zoom, contrast, and text palettes.
+- Item-level badges and rarity-colored equipment-slot borders.
+- Cleaner item tooltips when GearScore is installed.
+- Configurable loot-alert toasts for looted items, roll wins, and crafts.
+
+Character-panel features can be disabled in settings while keeping the logs
+browser, tooltip parses, and lookup functionality enabled. Changing this option
+requires a UI reload.
 
 ### Rising Gods Profiles
 
