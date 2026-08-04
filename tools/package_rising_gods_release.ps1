@@ -129,8 +129,13 @@ if (-not (Test-Path -LiteralPath $realmDataPath)) {
 }
 
 $expectedRealmAddonName = "coolstats_Data_RisingGods"
-$realmAddons = @(Get-ChildItem -LiteralPath $realmDataPath -Directory -Filter "coolstats_Data_*")
-$unexpectedRealmAddons = @($realmAddons | Where-Object { $_.Name -ne $expectedRealmAddonName })
+$expectedRealmShardPrefix = "${expectedRealmAddonName}_UWU_"
+$realmAddons = @(Get-ChildItem -LiteralPath $realmDataPath -Directory -Filter "coolstats_Data_*" | Sort-Object Name)
+$unexpectedRealmAddons = @(
+	$realmAddons | Where-Object {
+		$_.Name -ne $expectedRealmAddonName -and -not $_.Name.StartsWith($expectedRealmShardPrefix, [System.StringComparison]::Ordinal)
+	}
+)
 if ($unexpectedRealmAddons.Count -gt 0) {
 	throw "Refusing to package non-Rising-Gods realm data: $($unexpectedRealmAddons.Name -join ', ')"
 }
@@ -140,25 +145,48 @@ if (-not $realmAddon) {
 	throw "Missing required realm addon: $expectedRealmAddonName"
 }
 
-		$realmTocPath = Join-Path $realmAddon.FullName ($realmAddon.Name + ".toc")
-		if (-not (Test-Path -LiteralPath $realmTocPath)) {
-			throw "Missing realm data addon TOC: $realmTocPath"
-		}
-		$realmTocVersion = Select-String -LiteralPath $realmTocPath -Pattern "^## Version:\s*(.+)$" |
-			Select-Object -First 1
-		if (-not $realmTocVersion -or $realmTocVersion.Matches[0].Groups[1].Value.Trim() -ne $Version) {
-			throw "$($realmAddon.Name) TOC version does not match requested release version $Version"
-		}
+$baseDataTocPath = Join-Path $realmAddon.FullName ($realmAddon.Name + ".toc")
+if (-not (Test-Path -LiteralPath $baseDataTocPath -PathType Leaf)) {
+	throw "Missing Rising Gods data TOC: $baseDataTocPath"
+}
+$baseChunkLine = Select-String -LiteralPath $baseDataTocPath -Pattern "^## X-coolstats-PlayerChunks:\s*(\d+)$" |
+	Select-Object -First 1
+if (-not $baseChunkLine) {
+	throw "Rising Gods data TOC is missing X-coolstats-PlayerChunks."
+}
+$baseChunkCount = [int]$baseChunkLine.Matches[0].Groups[1].Value
 
-		$realmStage = Join-Path $stageRoot $realmAddon.Name
-		Get-ChildItem -LiteralPath $realmAddon.FullName -Recurse -File |
-			Where-Object { $_.Extension -match "^\.(toc|lua)$" } |
-			ForEach-Object {
-				$relativePath = $_.FullName.Substring($realmAddon.FullName.Length + 1)
-				$destinationPath = Join-Path $realmStage $relativePath
-				New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
-				Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
+$requiredShardNames = @()
+for ($index = 1; $index -le $baseChunkCount; $index += 1) {
+	$requiredShardNames += ("{0}{1:D2}" -f $expectedRealmShardPrefix, $index)
+}
+foreach ($shardName in $requiredShardNames) {
+	if (-not ($realmAddons | Where-Object { $_.Name -eq $shardName } | Select-Object -First 1)) {
+		throw "Missing required Rising Gods player shard addon: $shardName"
+	}
+}
+
+foreach ($realmAddon in $realmAddons) {
+	$realmTocPath = Join-Path $realmAddon.FullName ($realmAddon.Name + ".toc")
+	if (-not (Test-Path -LiteralPath $realmTocPath)) {
+		throw "Missing realm data addon TOC: $realmTocPath"
+	}
+	$realmTocVersion = Select-String -LiteralPath $realmTocPath -Pattern "^## Version:\s*(.+)$" |
+		Select-Object -First 1
+	if (-not $realmTocVersion -or $realmTocVersion.Matches[0].Groups[1].Value.Trim() -ne $Version) {
+		throw "$($realmAddon.Name) TOC version does not match requested release version $Version"
+	}
+
+	$realmStage = Join-Path $stageRoot $realmAddon.Name
+	Get-ChildItem -LiteralPath $realmAddon.FullName -Recurse -File |
+		Where-Object { $_.Extension -match "^\.(toc|lua)$" } |
+		ForEach-Object {
+			$relativePath = $_.FullName.Substring($realmAddon.FullName.Length + 1)
+			$destinationPath = Join-Path $realmStage $relativePath
+			New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
+			Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
 		}
+}
 
 if (Test-Path -LiteralPath $zipPath) {
 	Remove-Item -LiteralPath $zipPath -Force

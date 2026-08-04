@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.2.38-rg1 - 2026-08-04
+
+### Rising Gods UwU data repair
+
+- Refreshed the Rising-Gods ICC dataset with the new sharded data architecture.
+- Fixed a renamed/custom-character edge case where bulk boss leaderboards could
+  de-duplicate an old UwU GUID name before the current retained player name was
+  matched, leaving summary rank data visible but boss rows blank.
+- Added an automatic targeted character repair pass for active ranked players
+  whose best-spec boss payload is still empty after the bulk leaderboard pass.
+  This repairs players such as `Nìíro` while keeping the regular update path
+  bulk-first and fast.
+- Verified `Nìíro` and `Niiró` remain separate player keys and now both receive
+  their own boss-layer shard rows.
+
+### Warmane 0.2.38 parity
+
+- Ported the latest shared runtime improvements: first-run feature guide,
+  in-game changelog, update center polish, dialog z-order fixes, right-click
+  UWU Logs actions, cached gear/talent panel fixes, and browser cleanup.
+- Added the latest browser and statistics behavior, including selected-boss
+  DPS/parse fields, per-boss distributions, disposable browser indexes, capped
+  tooltip caches, and `/cs perf` memory diagnostics.
+- Kept Rising Gods profile links pointed at
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<name>`.
+
+### Rising Gods data architecture
+
+- Migrated generated Rising Gods data from inline Lua chunks into
+  load-on-demand player shard addons named `coolstats_Data_RisingGods_UWU_XX`.
+- Split boss payloads into aligned raid-layer shard addons for ICC, Vault of
+  Archavon, Ruby Sanctum, and TOGC so raid toggles and the data-load slider can
+  reduce memory after `/reload`.
+- Updated release packaging, release validation, Lua data integrity audits, and
+  public updater validation to require the full sharded data addon family.
+
+### Public updaters
+
+- Updated `Update_Rising_Gods_Logs.bat` and `Update_Rising_Gods_Logs.sh` so
+  they rebuild, validate, back up, and install the full Rising Gods data addon
+  family without touching the core addon or cache addon.
+- Kept both public updaters relative-path-only, credential-free, and
+  Python-source based for auditability.
+
 ## 0.2.35-rg1 - 2026-07-27
 
 ### Warmane parity port

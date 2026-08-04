@@ -1,14 +1,15 @@
 # Rising Gods Data Maintenance
 
 UwU Logs data is generated outside the game and bundled as the load-on-demand
-addon `coolstats_Data_RisingGods`.
+addon family rooted at `coolstats_Data_RisingGods`.
 
 ## Canonical identifiers
 
 - UwU Logs server: `Rising-Gods`
 - normalized realm key: `risinggods`
 - active phase: `icc`
-- data addon: `coolstats_Data_RisingGods`
+- data addon family: `coolstats_Data_RisingGods` plus
+  `coolstats_Data_RisingGods_UWU_*`
 - JSON/cache slug: `rising_gods`
 
 `Rising-Gods`, `Rising Gods`, and `RisingGods` normalize to the same client key.
@@ -28,17 +29,22 @@ addon `coolstats_Data_RisingGods`.
 9. Use `-BossName <character>` with weekly refreshes when a specific player's
    UwU character page needs targeted boss-log repair after the bulk pull.
 10. Generated Lua is committed; raw JSON and cache files remain local and ignored.
-11. The release archive must contain only the core, cache, and Rising Gods data addons.
+11. The release archive must contain only the core, cache, log-updater, and
+    Rising Gods data addon family.
 12. Never point these scripts at the Warmane repository or its release directory.
-13. Generated player data is split into dynamic Lua chunks using a roughly
-    3,000-player target, a six-chunk minimum for normal release-sized data, and
-    a 16-chunk ceiling. The TOC must include `X-coolstats-PlayerCount` and
-    `X-coolstats-PlayerChunks` so the in-game load slider and release audits
-    agree on what can be skipped after `/reload`.
-14. Lua 5.1 validation must pass before packaging or publishing a release.
-15. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
-16. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
-17. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
+13. Generated player data is split into load-on-demand shard addons using a
+    roughly 3,000-player target, a six-chunk minimum for normal release-sized
+    data, and a 16-chunk ceiling. The TOC must include
+    `X-coolstats-PlayerCount` and `X-coolstats-PlayerChunks` so the in-game
+    load slider and release audits agree on what can be skipped after
+    `/reload`.
+14. Boss payloads are split into raid-layer shard addons aligned to the same
+    player chunks. For Rising Gods ICC data, keep ICC, VOA, Ruby Sanctum, and
+    TOGC layers enabled by default and validate all layer TOCs before release.
+15. Lua 5.1 validation must pass before packaging or publishing a release.
+16. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
+17. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
+18. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
 
 ## Public data updater
 
@@ -55,18 +61,19 @@ The public updater must stay auditable and data-only:
   with a compiled executable unless there is a specific, reviewed need;
 - do not request administrator rights, credentials, GitHub tokens, or Git
   publishing access;
-- update only `coolstats_Data_RisingGods` in the user's live `Interface\AddOns`
-  folder;
+- update only `coolstats_Data_RisingGods` and generated
+  `coolstats_Data_RisingGods_UWU_*` shard folders in the user's live
+  `Interface\AddOns` folder;
 - check live `Interface\AddOns` write access before downloading new data, so
   protected Windows folders fail early with a clear message;
-- back up the old live data addon before replacement;
-- validate generated Rising Gods metadata, encounter coverage, ranked-player
-  count, duplicate player keys, dynamic chunk metadata, chunk distribution, and
-  rankless-row guards before install;
+- back up the old live data addon family before replacement;
+- validate generated Rising Gods metadata, encounter coverage, shard TOCs,
+  ranked-player count, duplicate player keys, dynamic chunk metadata, chunk
+  distribution, raid layers, and rankless-row guards before install;
 - resolve duplicate display names against the UwU character endpoint and run
   automatic boss-row repair for affected players;
-- validate the copied live data addon again after replacement, and restore the
-  backup if replacement fails;
+- validate the copied live data addon family again after replacement, and
+  restore the backup if replacement fails;
 - keep the shipped launchers/helper files free of maintainer-local paths,
   usernames, saved AddOns paths, credentials, and non-`coolstats` GitHub owners;
 - run the release privacy audit before publishing any ZIP;
@@ -75,9 +82,8 @@ The public updater must stay auditable and data-only:
 - ship both launchers at the release ZIP root and the helper scripts in
   `coolstats_LogUpdater/tools/` so an extracted release can auto-detect its
   `Interface\AddOns` folder;
-- allow installer temporary folder names only for staged pre-install audits;
-  final installed data folders must still be named exactly
-  `coolstats_Data_RisingGods`.
+- install staged data through a temporary folder, then atomically replace the
+  final data family folders.
 
 ## Commands
 
@@ -93,13 +99,14 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.35-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.38-rg1
 ```
 
 Generated runtime data:
 
 ```text
 realm_data/coolstats_Data_RisingGods/data/logs/icc/
+realm_data/coolstats_Data_RisingGods_UWU_*/data/logs/icc/
 ```
 
 Local ignored maintenance data:
@@ -111,7 +118,7 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.35-rg1`.
+- Tag releases as `v<version>`, for example `v0.2.38-rg1`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane

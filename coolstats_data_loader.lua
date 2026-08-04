@@ -57,6 +57,80 @@ local function GetRawPlayerLoadLimit()
 	return tonumber(tooltip.uwuPlayerLoadLimit)
 end
 
+local function GetRaidLayerOptions(realmKey, phaseId, create)
+	local db = coolstatsDB
+	if type(db) ~= "table" then
+		return nil
+	end
+	db.tooltip = db.tooltip or {}
+	local tooltip = db.tooltip
+	if type(tooltip.uwuRaidLayers) ~= "table" then
+		if not create then
+			return nil
+		end
+		tooltip.uwuRaidLayers = {}
+	end
+	realmKey = NormalizeRealmName(realmKey)
+	phaseId = NormalizeRealmName(phaseId)
+	if realmKey == "" or phaseId == "" then
+		return nil
+	end
+	if type(tooltip.uwuRaidLayers[realmKey]) ~= "table" then
+		if not create then
+			return nil
+		end
+		tooltip.uwuRaidLayers[realmKey] = {}
+	end
+	if type(tooltip.uwuRaidLayers[realmKey][phaseId]) ~= "table" then
+		if not create then
+			return nil
+		end
+		tooltip.uwuRaidLayers[realmKey][phaseId] = {}
+	end
+	return tooltip.uwuRaidLayers[realmKey][phaseId]
+end
+
+function coolstats.IsUwURaidLayerEnabled(realm, phaseId, raidKey)
+	raidKey = tostring(raidKey or "")
+	if raidKey == "" then
+		return true
+	end
+	local realmKey = NormalizeRealmName(realm or GetCurrentRealmName())
+	phaseId = NormalizeRealmName(phaseId or coolstats.GetExpectedRealmPhaseId(realmKey))
+	local options = GetRaidLayerOptions(realmKey, phaseId, false)
+	if type(options) ~= "table" then
+		return true
+	end
+	return options[raidKey] ~= false
+end
+
+function coolstats.SetUwURaidLayerEnabled(realm, phaseId, raidKey, enabled)
+	raidKey = tostring(raidKey or "")
+	if raidKey == "" then
+		return
+	end
+	local realmKey = NormalizeRealmName(realm or GetCurrentRealmName())
+	phaseId = NormalizeRealmName(phaseId or coolstats.GetExpectedRealmPhaseId(realmKey))
+	local options = GetRaidLayerOptions(realmKey, phaseId, true)
+	if type(options) ~= "table" then
+		return
+	end
+	options[raidKey] = enabled ~= false
+	if coolstats.ClearUwUTooltipCache then
+		coolstats.ClearUwUTooltipCache()
+	end
+	if coolstats.InvalidateCachedPlayerBrowserIndex then
+		coolstats.InvalidateCachedPlayerBrowserIndex()
+	end
+end
+
+local function IsUwUDataRaidLayerEnabled(data, raidKey)
+	if type(data) ~= "table" then
+		return true
+	end
+	return coolstats.IsUwURaidLayerEnabled(data.realm, data.phaseId, raidKey)
+end
+
 local function GetDefaultPlayerChunkCount(totalPlayers)
 	totalPlayers = math.floor((tonumber(totalPlayers) or 0) + 0.5)
 	if totalPlayers <= 0 then
@@ -157,6 +231,16 @@ function coolstats.ShouldSkipUwUDataChunk(data, chunkStartIndex)
 	return (tonumber(chunkStartIndex) or 1) > limit
 end
 
+function coolstats.ShouldSkipUwUDataRaidLayer(data, raidKey, chunkStartIndex)
+	if type(data) ~= "table" then
+		return false
+	end
+	if not IsUwUDataRaidLayerEnabled(data, raidKey) then
+		return true
+	end
+	return coolstats.ShouldSkipUwUDataChunk(data, chunkStartIndex)
+end
+
 function coolstats.BuildUwUDataPlayerAllowList(data, playerLoadOrder)
 	if type(data) ~= "table" then
 		return nil
@@ -215,6 +299,216 @@ function coolstats.FinalizeUwUDataLoad(data)
 	data.playerLoadAllowed = nil
 end
 
+function coolstats.MarkUwUDataRaidLayerLoaded(data, raidKey)
+	if type(data) ~= "table" then
+		return
+	end
+	raidKey = tostring(raidKey or "")
+	if raidKey == "" then
+		return
+	end
+	data.loadedRaidLayers = data.loadedRaidLayers or {}
+	data.loadedRaidLayers[raidKey] = true
+end
+
+local function HasUwUDataShards(data)
+	if type(data) ~= "table" then
+		return false
+	end
+	return type(data.playerShardAddons) == "table" or type(data.playerShardAddonPrefix) == "string"
+end
+
+local function GetUwUDataShardAddonName(data, index)
+	if type(data) ~= "table" then
+		return nil
+	end
+	local addons = data.playerShardAddons
+	if type(addons) == "table" and addons[index] then
+		return addons[index]
+	end
+	local prefix = data.playerShardAddonPrefix
+	if type(prefix) == "string" and prefix ~= "" then
+		return prefix .. string.format("%02d", index)
+	end
+	return nil
+end
+
+local function GetUwUDataRaidLayerShardAddonName(layer, index)
+	if type(layer) ~= "table" then
+		return nil
+	end
+	local addons = layer.shardAddons
+	if type(addons) == "table" and addons[index] then
+		return addons[index]
+	end
+	local prefix = layer.shardAddonPrefix
+	if type(prefix) == "string" and prefix ~= "" then
+		return prefix .. string.format("%02d", index)
+	end
+	return nil
+end
+
+function coolstats.GetUwUDataRaidLayerChoices(data)
+	data = data or coolstatsUwUData
+	local choices = {}
+	if type(data) ~= "table" or type(data.raidLayers) ~= "table" then
+		return choices
+	end
+	for index = 1, #data.raidLayers do
+		local layer = data.raidLayers[index]
+		if type(layer) == "table" and layer.key and layer.name then
+			choices[#choices + 1] = {
+				key = tostring(layer.key),
+				name = tostring(layer.name),
+				enabled = IsUwUDataRaidLayerEnabled(data, layer.key),
+				loaded = data.loadedRaidLayers and data.loadedRaidLayers[layer.key] == true,
+				bossIndexes = layer.bossIndexes,
+			}
+		end
+	end
+	return choices
+end
+
+local function GetUwUDataRaidLayerByBossIndex(data)
+	if type(data) ~= "table" or type(data.raidLayers) ~= "table" then
+		return nil
+	end
+	if data.raidLayerByBossIndex then
+		return data.raidLayerByBossIndex
+	end
+	local map = {}
+	for layerIndex = 1, #data.raidLayers do
+		local layer = data.raidLayers[layerIndex]
+		local bossIndexes = type(layer) == "table" and layer.bossIndexes or nil
+		if type(bossIndexes) == "table" then
+			for index = 1, #bossIndexes do
+				local bossIndex = tonumber(bossIndexes[index])
+				if bossIndex then
+					map[bossIndex] = layer
+				end
+			end
+		end
+	end
+	data.raidLayerByBossIndex = map
+	return map
+end
+
+function coolstats.IsUwUBossIndexEnabled(data, bossIndex)
+	if type(data) ~= "table" or type(data.raidLayers) ~= "table" then
+		return true
+	end
+	local map = GetUwUDataRaidLayerByBossIndex(data)
+	local layer = map and map[tonumber(bossIndex)]
+	if not layer or not layer.key then
+		return true
+	end
+	return IsUwUDataRaidLayerEnabled(data, layer.key)
+end
+
+function coolstats.GetUwUDataDesiredShardCount(data)
+	if type(data) ~= "table" then
+		return 0
+	end
+	local chunkCount = math.floor((tonumber(data.playerChunkCount) or 0) + 0.5)
+	local steps = GetDataPlayerLoadSteps(data)
+	if chunkCount <= 0 and type(steps) == "table" then
+		chunkCount = math.max(0, #steps - 1)
+	end
+	if chunkCount <= 0 then
+		return 0
+	end
+
+	local limit = coolstats.GetUwUDataPlayerLoadLimit(data.totalPlayers, steps)
+	data.loadLimit = limit
+	data.loadedPlayers = nil
+	if limit == 0 then
+		return 0
+	end
+	if limit == nil or type(steps) ~= "table" then
+		return chunkCount
+	end
+
+	local desired = 0
+	for index = 1, chunkCount do
+		local chunkStartIndex = math.floor((tonumber(steps[index]) or 0) + 0.5) + 1
+		if chunkStartIndex <= limit then
+			desired = index
+		end
+	end
+	return desired
+end
+
+local function LoadUwUDataRaidLayers(data, desiredShardCount)
+	if type(data) ~= "table" or type(data.raidLayers) ~= "table" then
+		return true
+	end
+	if not LoadAddOn then
+		return false, "load-addon-unavailable"
+	end
+	desiredShardCount = math.floor((tonumber(desiredShardCount) or 0) + 0.5)
+	if desiredShardCount <= 0 then
+		return true
+	end
+	data.loadedRaidLayerShards = data.loadedRaidLayerShards or {}
+	data.loadedRaidLayers = data.loadedRaidLayers or {}
+	for layerIndex = 1, #data.raidLayers do
+		local layer = data.raidLayers[layerIndex]
+		local raidKey = layer and layer.key
+		if raidKey and IsUwUDataRaidLayerEnabled(data, raidKey) then
+			local loaded = tonumber(data.loadedRaidLayerShards[raidKey]) or 0
+			for shardIndex = loaded + 1, desiredShardCount do
+				local shardAddonName = GetUwUDataRaidLayerShardAddonName(layer, shardIndex)
+				if not shardAddonName then
+					return false, "realm-data-raid-layer-missing"
+				end
+				if not IsAddOnLoaded or not IsAddOnLoaded(shardAddonName) then
+					local ok, reason = LoadAddOn(shardAddonName)
+					if not ok then
+						return false, reason or "realm-data-raid-layer-missing", shardAddonName
+					end
+				end
+				data.loadedRaidLayerShards[raidKey] = shardIndex
+			end
+			data.loadedRaidLayers[raidKey] = true
+		end
+	end
+	return true
+end
+
+function coolstats.LoadUwUDataShards(data)
+	if not HasUwUDataShards(data) then
+		return true
+	end
+	if type(data.players) ~= "table" then
+		data.players = {}
+	end
+	if not LoadAddOn then
+		return false, "load-addon-unavailable"
+	end
+
+	local desired = coolstats.GetUwUDataDesiredShardCount(data)
+	local loaded = tonumber(data.loadedShardCount) or 0
+	for index = loaded + 1, desired do
+		local shardAddonName = GetUwUDataShardAddonName(data, index)
+		if not shardAddonName then
+			return false, "realm-data-shard-missing"
+		end
+		if not IsAddOnLoaded or not IsAddOnLoaded(shardAddonName) then
+			local ok, reason = LoadAddOn(shardAddonName)
+			if not ok then
+				return false, reason or "realm-data-shard-missing", shardAddonName
+			end
+		end
+		data.loadedShardCount = index
+	end
+	data.loadedShardTarget = desired
+	local raidLoaded, raidReason, raidAddonName = LoadUwUDataRaidLayers(data, desired)
+	if not raidLoaded then
+		return false, raidReason or "realm-data-raid-layer-missing", raidAddonName
+	end
+	return true
+end
+
 local function SetRealmDataStatus(loaded, reason, addonName)
 	local data = coolstatsUwUData
 	coolstats.realmDataStatus = {
@@ -227,6 +521,8 @@ local function SetRealmDataStatus(loaded, reason, addonName)
 		totalPlayers = data and data.totalPlayers or nil,
 		loadedPlayers = data and (data.loadedPlayers or CountPlayers(data.players)) or nil,
 		playerLoadLimit = data and data.loadLimit or nil,
+		loadedShardCount = data and data.loadedShardCount or nil,
+		loadedShardTarget = data and data.loadedShardTarget or nil,
 	}
 end
 
@@ -238,6 +534,22 @@ local function RememberRealmData(data)
 		coolstats.FinalizeUwUDataLoad(data)
 		coolstats.realmDataByRealm[realmKey] = data
 	end
+end
+
+local function ActivateRealmData(data, realmKey, addonName, statusReason)
+	if not DataMatchesCurrentRealm(data, realmKey) then
+		return false, "realm-data-mismatch"
+	end
+	coolstatsUwUData = data
+	local loaded, reason, shardAddonName = coolstats.LoadUwUDataShards(data)
+	if not loaded then
+		SetRealmDataStatus(false, reason or "realm-data-shard-missing", shardAddonName or addonName)
+		return false, reason or "realm-data-shard-missing"
+	end
+	coolstats.FinalizeUwUDataLoad(data)
+	RememberRealmData(data)
+	SetRealmDataStatus(true, statusReason or "loaded", addonName)
+	return true
 end
 
 function coolstats.GetCurrentRealmName()
@@ -343,10 +655,7 @@ function coolstats.EnsureRealmDataLoaded()
 	-- The core addon never owns logs data. Discard anything another addon
 	-- exposed unless it explicitly belongs to the current realm.
 	if DataMatchesCurrentRealm(coolstatsUwUData, realmKey) then
-		coolstats.FinalizeUwUDataLoad(coolstatsUwUData)
-		RememberRealmData(coolstatsUwUData)
-		SetRealmDataStatus(true, "loaded", addonName)
-		return true
+		return ActivateRealmData(coolstatsUwUData, realmKey, addonName, "loaded")
 	end
 
 	RememberRealmData(coolstatsUwUData)
@@ -359,10 +668,7 @@ function coolstats.EnsureRealmDataLoaded()
 
 	local rememberedData = coolstats.realmDataByRealm[realmKey]
 	if DataMatchesCurrentRealm(rememberedData, realmKey) then
-		coolstatsUwUData = rememberedData
-		coolstats.FinalizeUwUDataLoad(coolstatsUwUData)
-		SetRealmDataStatus(true, "restored", addonName)
-		return true
+		return ActivateRealmData(rememberedData, realmKey, addonName, "restored")
 	end
 
 	if IsAddOnLoaded and IsAddOnLoaded(addonName) then
@@ -377,10 +683,7 @@ function coolstats.EnsureRealmDataLoaded()
 
 	local loaded, reason = LoadAddOn(addonName)
 	if loaded and DataMatchesCurrentRealm(coolstatsUwUData, realmKey) then
-		coolstats.FinalizeUwUDataLoad(coolstatsUwUData)
-		RememberRealmData(coolstatsUwUData)
-		SetRealmDataStatus(true, "loaded", addonName)
-		return true
+		return ActivateRealmData(coolstatsUwUData, realmKey, addonName, "loaded")
 	end
 
 	coolstatsUwUData = nil
