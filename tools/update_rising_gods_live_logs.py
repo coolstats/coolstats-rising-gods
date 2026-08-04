@@ -2,7 +2,7 @@
 """Cross-platform public updater for Rising Gods log data.
 
 This is used by Update_Rising_Gods_Logs.sh for Linux/BSD-like environments and
-does not require PowerShell. It updates only coolstats_Data_RisingGods.
+does not require PowerShell. It updates only the Rising Gods data addon family.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from test_rising_gods_data_integrity import audit_data_addon
 
 
 DATA_ADDON_NAME = "coolstats_Data_RisingGods"
+DATA_ADDON_SHARD_PREFIX = DATA_ADDON_NAME + "_UWU_"
 JSON_NAME = "uwu_logs_rising_gods.json"
 BOSS_CACHE_NAME = "uwu_character_boss_cache_rising_gods.json"
 
@@ -57,7 +58,7 @@ class Ui:
         print("                  c o o l s t a t s")
         print("                  Rising Gods logs")
         print("============================================================")
-        print(f" Data-only updater for {DATA_ADDON_NAME}")
+        print(f" Data-only updater for {DATA_ADDON_NAME} and its shards")
         print(" Duplicate-name safeguards and boss repairs are automatic.")
         print(" No admin rights, no credentials, no GitHub publishing.")
         print()
@@ -87,7 +88,7 @@ def run_step_labels(validate_only: bool, skip_api_validation: bool, no_install: 
     if not no_install:
         steps.append("Check live AddOns write access")
     steps.extend(["Download UwU logs and rebuild data", "Validate generated data"])
-    steps.append("Finish local refresh" if no_install else "Install live data addon")
+    steps.append("Finish local refresh" if no_install else "Install live data addon shards")
     steps.append("Finish")
     return steps
 
@@ -158,7 +159,7 @@ def assert_updater_layout(layout: Layout) -> None:
         unexpected = [
             path.name
             for path in realm_root.glob("coolstats_Data_*")
-            if path.is_dir() and path.name != DATA_ADDON_NAME
+            if path.is_dir() and not is_data_family_name(path.name)
         ]
         if unexpected:
             raise UpdaterError("Refusing to update from a workspace containing non-Rising-Gods realm data: " + ", ".join(unexpected))
@@ -206,7 +207,7 @@ def confirm_update_plan(
     print("Update plan")
     print(f"  Source folder:      {layout.root}")
     print(f"  Live install:       {'disabled (--no-install)' if no_install else addons_path}")
-    print(f"  Addon folder:       {DATA_ADDON_NAME} only")
+    print(f"  Addon folders:      {DATA_ADDON_NAME} plus generated UWU shards")
     print(f"  UwU profile check:  {'skipped' if skip_api_validation else 'enabled'}")
     print(f"  Ranked pull:        {max_per_spec} players per class/spec")
     print(f"  Boss pull limit:    {bulk_top_limit} rows per boss/class/spec")
@@ -214,7 +215,7 @@ def confirm_update_plan(
     print(f"  Targeted repairs:   {', '.join(boss_names) if boss_names else 'none'}")
     print()
     print("This will not modify the core coolstats addon or the cache addon.")
-    print("The previous live data addon is backed up before replacement.")
+    print("The previous live data addon family is backed up before replacement.")
     if yes:
         print("Confirmation skipped because --yes was provided.")
         return
@@ -289,6 +290,11 @@ def resolve_luac(requested_path: str) -> Optional[str]:
 
 
 def lua_files_for_validation(layout: Layout, validation_root: Path) -> List[Path]:
+    if validation_root.name == DATA_ADDON_NAME:
+        files: List[Path] = []
+        for folder in collect_data_addon_family(validation_root):
+            files.extend(folder.rglob("*.lua"))
+        return sorted(path.resolve() for path in files)
     if (validation_root / "coolstats.toc").is_file():
         files = list(validation_root.glob("*.lua"))
         cache_path = validation_root / "cache_addon" / "coolstats_Cache"
@@ -353,6 +359,24 @@ def assert_child_path(root: Path, child_name: str) -> Path:
     return child
 
 
+def is_data_family_name(name: str) -> bool:
+    return name == DATA_ADDON_NAME or name.startswith(DATA_ADDON_SHARD_PREFIX)
+
+
+def collect_data_addon_family(base_data_addon: Path) -> List[Path]:
+    base = base_data_addon.resolve()
+    parent = base.parent
+    family = [
+        path.resolve()
+        for path in parent.iterdir()
+        if path.is_dir() and is_data_family_name(path.name)
+    ]
+    names = {path.name for path in family}
+    if DATA_ADDON_NAME not in names:
+        raise UpdaterError(f"Missing Rising Gods base data addon: {base}")
+    return sorted(family, key=lambda path: (path.name != DATA_ADDON_NAME, path.name))
+
+
 def remove_path(path: Path) -> None:
     if path.is_symlink() or path.is_file():
         path.unlink()
@@ -369,65 +393,89 @@ def install_data_addon(
 ) -> None:
     source = source_data_addon.resolve()
     addons_root = addons_path.resolve()
-    target = assert_child_path(addons_root, DATA_ADDON_NAME)
-    temp = assert_child_path(addons_root, f"{DATA_ADDON_NAME}.__coolstats_update_tmp_{os.getpid()}")
+    source_family = collect_data_addon_family(source)
+    temp_root = assert_child_path(addons_root, f"_coolstats_rising_gods_update_tmp_{os.getpid()}")
     backup_root = assert_child_path(addons_root, "_coolstats_backups")
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     backup = assert_child_path(backup_root, f"{DATA_ADDON_NAME}_{timestamp}_{os.getpid()}")
     old_moved = False
+    moved_targets: List[tuple[Path, Path]] = []
 
     if not (addons_root / "coolstats" / "coolstats.toc").is_file():
         print("Warning: the core coolstats addon folder was not found in this AddOns path.")
         print("Install the official release ZIP first if this is a new setup.")
 
     try:
-        if temp.exists():
+        if temp_root.exists():
             try:
-                remove_path(temp)
+                remove_path(temp_root)
             except OSError as exc:
                 raise UpdaterError(
-                    f"Could not clean the previous temporary update folder: {temp}. "
+                    f"Could not clean the previous temporary update folder: {temp_root}. "
                     "Close World of Warcraft and any file browser windows using the folder, then try again. "
                     f"Original error: {exc}"
                 ) from exc
+        temp_root.mkdir(parents=True, exist_ok=True)
         try:
-            shutil.copytree(source, temp)
+            for source_folder in source_family:
+                shutil.copytree(source_folder, temp_root / source_folder.name)
         except OSError as exc:
             raise UpdaterError(
-                f"Could not create the temporary update folder: {temp}. "
+                f"Could not create the temporary update folders under: {temp_root}. "
                 "The operating system may be denying writes to this AddOns folder. "
                 "If it is under Program Files or another protected location, move the game/addon "
                 "to a writable folder or run the official coolstats updater from an elevated terminal. "
                 f"Original error: {exc}"
             ) from exc
         audit_data_addon(
-            temp,
+            temp_root / DATA_ADDON_NAME,
             expected_version=expected_version,
             expected_max_per_spec=expected_max_per_spec,
-            allow_temporary_folder_name=True,
+            require_shards=True,
             quiet=True,
         )
 
         backup_root.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            shutil.move(str(target), str(backup))
+        backup.mkdir(parents=True, exist_ok=True)
+        live_family = [
+            path
+            for path in addons_root.iterdir()
+            if path.is_dir() and is_data_family_name(path.name)
+        ]
+        for target in sorted(live_family, key=lambda path: path.name):
+            backup_target = backup / target.name
+            shutil.move(str(target), str(backup_target))
+            moved_targets.append((backup_target, target))
             old_moved = True
-            print(f"Backed up old data addon to: {backup}")
+        if old_moved:
+            print(f"Backed up old data addon family to: {backup}")
 
-        shutil.move(str(temp), str(target))
+        for staged in sorted(temp_root.iterdir(), key=lambda path: path.name):
+            if staged.is_dir() and is_data_family_name(staged.name):
+                shutil.move(str(staged), str(assert_child_path(addons_root, staged.name)))
+        remove_path(temp_root)
         audit_data_addon(
-            target,
+            addons_root / DATA_ADDON_NAME,
             expected_version=expected_version,
             expected_max_per_spec=expected_max_per_spec,
+            require_shards=True,
             quiet=True,
         )
-        print(f"Installed updated data addon to: {target}")
+        print(f"Installed updated data addon family to: {addons_root}")
     except Exception:
-        if temp.exists():
-            remove_path(temp)
-        if old_moved and not target.exists() and backup.exists():
-            shutil.move(str(backup), str(target))
-            print("Warning: restored previous data addon from backup.")
+        if temp_root.exists():
+            remove_path(temp_root)
+        for live in [
+            path
+            for path in addons_root.iterdir()
+            if path.is_dir() and is_data_family_name(path.name)
+        ]:
+            remove_path(live)
+        for backup_target, target in moved_targets:
+            if backup_target.exists() and not target.exists():
+                shutil.move(str(backup_target), str(target))
+        if old_moved:
+            print("Warning: restored previous data addon family from backup.")
         raise
 
 
@@ -466,6 +514,7 @@ def main() -> int:
                 layout.live_data_addon,
                 expected_version=addon_version,
                 expected_max_per_spec=args.max_per_spec,
+                require_shards=True,
             )
             print(f"Generated data contains {result['players']} ranked players.")
             validation_root = layout.root if layout.kind == "Source" else layout.live_data_addon
@@ -531,8 +580,12 @@ def main() -> int:
                 resolved_work.relative_to(work_root.resolve())
             except ValueError as exc:
                 raise UpdaterError(f"Unsafe generated data workspace outside updater work folder: {resolved_work}") from exc
-            if generated_data_addon.exists():
-                remove_path(generated_data_addon)
+            for existing in [
+                path
+                for path in work_root.iterdir()
+                if path.is_dir() and is_data_family_name(path.name)
+            ]:
+                remove_path(existing)
 
         run_generator(
             layout=layout,
@@ -552,6 +605,7 @@ def main() -> int:
             generated_data_addon,
             expected_version=addon_version,
             expected_max_per_spec=args.max_per_spec,
+            require_shards=True,
         )
         print(f"Generated data contains {result['players']} ranked players.")
         validation_root = layout.root if layout.kind == "Source" else generated_data_addon
@@ -563,7 +617,7 @@ def main() -> int:
         else:
             if live_addons_path is None:
                 raise UpdaterError("No live AddOns path was resolved.")
-            ui.step("Installing live Rising Gods data addon")
+            ui.step("Installing live Rising Gods data addon family")
             install_data_addon(
                 layout=layout,
                 addons_path=live_addons_path,

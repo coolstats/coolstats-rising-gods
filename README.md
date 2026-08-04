@@ -8,29 +8,37 @@
 
 This is the Rising Gods edition of coolstats for World of Warcraft 3.3.5a. It
 is distributed separately from the Warmane edition and ships only the Rising
-Gods load-on-demand data addon.
+Gods load-on-demand data addon family.
 
-The core is based on upstream coolstats `v0.2.35`, while Rising Gods data,
+The core is based on upstream coolstats `v0.2.38`, while Rising Gods data,
 release packaging, and public updater tooling are maintained independently in
 this repository.
 
 ## Current Bundled Logs Coverage
 
-As of `0.2.35-rg1`, the bundled data is:
+As of `0.2.38-rg1`, the bundled data is:
 
 - **Realm:** Rising-Gods
 - **Phase:** ICC profile
-- **Bundled players:** 10,075 active ranked players
+- **Bundled players:** 10,134 active ranked players / 10,174 total retained rows
 - **Ranked pull size:** top 600 players per class/specialization
 - **Generated player chunks:** 6 dynamic load chunks
+- **Generated raid layers:** ICC, Vault of Archavon, Ruby Sanctum, and TOGC
+  boss payload shards
 - **Encounters:** Icecrown Citadel, Toravon, Halion, and Anub'arak
-- **Generated:** 2026-07-27
+- **Logs generated:** 2026-08-04
+- **Shard architecture rebuilt:** 2026-08-04
 
 The Rising Gods dataset intentionally stays ranked-player-only. Boss
 leaderboards enrich players already present in the ranked coverage, but do not
 add rankless boss-only records. Player data is ordered into dynamic chunks so
 lower data-load settings keep higher-ranked coverage first while still showing
 boss parses for covered players.
+
+The updater also runs targeted character repair after the bulk boss pass for
+retained ranked players whose best-spec boss payload is still empty. This keeps
+renamed or custom-character names distinct when UwU leaderboards expose an old
+GUID name above the current character name.
 
 ## Release Archive Layout
 
@@ -43,6 +51,7 @@ Update_Rising_Gods_Logs.sh
 coolstats/
 coolstats_Cache/
 coolstats_Data_RisingGods/
+coolstats_Data_RisingGods_UWU_*/
 coolstats_LogUpdater/
 ```
 
@@ -224,11 +233,13 @@ requires a UI reload.
    Interface/AddOns/coolstats/
    Interface/AddOns/coolstats_Cache/
    Interface/AddOns/coolstats_Data_RisingGods/
+   Interface/AddOns/coolstats_Data_RisingGods_UWU_*/
    Interface/AddOns/coolstats_LogUpdater/
    ```
 
 4. Enable `coolstats`, `coolstats_Cache`, and
-   `coolstats_Data_RisingGods` in the addon list.
+   every `coolstats_Data_RisingGods*` data addon in the addon list. All data
+   layers are enabled by default in official releases.
 5. Log into Rising Gods and run `/reload` after replacing an older build.
 6. Left-click the coolstats minimap button to open the player browser.
 
@@ -241,7 +252,9 @@ Minimap controls:
 ## Public Data Updaters
 
 Rising Gods log data can be refreshed without waiting for a full addon feature
-release. The public updaters update only `coolstats_Data_RisingGods`.
+release. The public updaters update only the Rising Gods data addon family:
+`coolstats_Data_RisingGods` plus generated `coolstats_Data_RisingGods_UWU_*`
+shard folders.
 
 | Platform | Launcher | How to run |
 | --- | --- | --- |
@@ -254,9 +267,9 @@ use numbered progress steps while they work. The Linux launcher is run through
 Refreshes also include duplicate-name safeguards for reused Rising Gods
 character names: ambiguous ranked rows are confirmed through the UwU Logs
 character endpoint, and affected boss rows are automatically repaired.
-Generated data uses the same dynamic chunk metadata as official releases, so
-the in-game player data-load slider can avoid loading lower-ranked chunks after
-the next `/reload`.
+Generated data uses the same dynamic chunk and raid-layer metadata as official
+releases, so the in-game player data-load slider and raid toggles can avoid
+loading disabled lower-priority data after the next `/reload`.
 
 ### Python 3 Requirement
 
@@ -311,10 +324,11 @@ for confirmation.
 The updater is intentionally readable source instead of a compiled executable.
 It performs no GitHub publishing, uses no credentials, requests no administrator
 rights, and ships no maintainer-local paths or saved install folders. It stages
-new data, audits Rising Gods metadata, encounter coverage, chunk balance,
-player-load metadata, duplicate keys, duplicate-name repairs, ranked-player
-count, and rankless-row guards, then backs up the old live data addon before
-replacement. The installed data addon is audited again after replacement.
+new data, audits Rising Gods metadata, encounter coverage, shard TOCs, chunk
+balance, player-load metadata, duplicate keys, duplicate-name repairs,
+ranked-player count, and rankless-row guards, then backs up the old live data
+addon family before replacement. The installed data family is audited again
+after replacement.
 
 If your WoW install is under a Windows protected folder such as `Program Files`,
 Windows may deny write access to `Interface/AddOns`. In that case, run the
@@ -335,6 +349,25 @@ bash ./Update_Rising_Gods_Logs.sh
 bash ./Update_Rising_Gods_Logs.sh --no-install
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 ```
+
+## Technical Notes
+
+Rising Gods data is split into a small base addon and load-on-demand shard
+addons:
+
+- `coolstats_Data_RisingGods` contains metadata, boss names, class/spec tables,
+  load-step metadata, and empty runtime player tables.
+- `coolstats_Data_RisingGods_UWU_01` through `_06` contain ranked player rows,
+  ordered so lower data-load settings retain higher-ranked coverage first.
+- `coolstats_Data_RisingGods_UWU_ICC_*`, `_VOA_*`, `_RS_*`, and `_TOGC_*`
+  contain boss-specific parse/DPS payloads aligned to the same player chunks.
+
+The browser index, active rows, sort-order caches, tooltip caches, and
+selected-boss fields are treated as disposable runtime memory. Opening,
+filtering, and sorting the browser can raise Lua working memory temporarily;
+closing the browser clears those references and schedules light garbage
+cleanup. `/cs perf` reports loaded shards, browser rows, tooltip cache count,
+and approximate cache sizes so memory reports can be debugged without guessing.
 
 ## Using Player Data
 
@@ -382,7 +415,7 @@ talents, loot alerts, or the character-panel improvements.
 - Bundled logs are updated by installing a newer release or by running one of
   the public data updater launchers.
 - Rising Gods data is stored in the load-on-demand
-  `coolstats_Data_RisingGods` addon.
+  `coolstats_Data_RisingGods*` addon family.
 - Cached gear, talents, favourites, and settings are stored locally in
   `coolstatsDB`.
 - Cached inspection data can be cleared from the player browser.
@@ -405,7 +438,7 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.35-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.38-rg1
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for updater and release safety

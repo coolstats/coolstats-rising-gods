@@ -123,6 +123,22 @@ class RisingGodsTests(unittest.TestCase):
         self.assertEqual(set(updates), {"rankedone"})
         self.assertEqual(names, {"rankedone": "RankedOne"})
 
+    def test_missing_ranked_boss_repair_targets_current_accented_players(self):
+        complete = player(name="Niiró", class_i=9, spec_i=2, score=9873)
+        complete["bosses"] = {"Lord Marrowgar": {"score_centi": 9917}}
+        complete["spec_bosses"] = {2: dict(complete["bosses"])}
+        missing = player(name="Nìíro", class_i=9, spec_i=2, score=9975, bosses={})
+        unknown = player(name="Unknown-123ABC", class_i=9, spec_i=2, score=9000, bosses={})
+        data = {
+            "players": {
+                "niiró": complete,
+                "nìíro": missing,
+                "unknown123abc": unknown,
+            }
+        }
+
+        self.assertEqual(uwu.find_missing_ranked_boss_targets(data), {"nìíro"})
+
     def test_duplicate_rankings_use_character_confirmed_current_row(self):
         def fake_fetch_points(server, class_i, spec_i, timeout, retries):
             if class_i == 9 and spec_i == 2:
@@ -220,11 +236,13 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIs(profile["include_boss_only_players"], False)
 
     def test_generated_release_data_contains_only_ranked_players(self):
+        realm_root = REPOSITORY_ROOT / "realm_data"
         chunks = "".join(
             chunk.read_text(encoding="utf-8")
-            for chunk in sorted((REPOSITORY_ROOT / "realm_data" / "coolstats_Data_RisingGods" / "data" / "logs" / "icc").glob("coolstats_uwu_data_*.lua"))
+            for shard in sorted(realm_root.glob("coolstats_Data_RisingGods_UWU_??"))
+            for chunk in sorted((shard / "data" / "logs" / "icc").glob("coolstats_uwu_data_*.lua"))
         )
-        player_rows = re.findall(r'^\s+\["[^"]+"\]\s=', chunks, flags=re.MULTILINE)
+        player_rows = re.findall(r'^players\["[^"]+"\]\s=', chunks, flags=re.MULTILINE)
         self.assertLess(len(player_rows), 12000)
         self.assertNotRegex(chunks, r'", 0, \d+, \d+, nil,')
 
@@ -234,7 +252,9 @@ class RisingGodsTests(unittest.TestCase):
         core = (REPOSITORY_ROOT / "coolstats.lua").read_text(encoding="utf-8")
         self.assertIn('risinggods = "coolstats_Data_RisingGods"', loader)
         self.assertNotIn('onyxia = "coolstats_Data_Onyxia"', loader)
-        self.assertIn('risinggods = "Rising-Gods"', tooltip)
+        self.assertIn('return "Rising-Gods"', tooltip)
+        self.assertIn('local CURRENT_UWU_PHASE_ID = "icc"', tooltip)
+        self.assertNotIn('local CURRENT_UWU_PHASE_ID = "toc"', tooltip)
         self.assertIn('https://db.rising-gods.de/?profile=eu.rising-gods.', tooltip)
         self.assertNotIn("armory.warmane.com", tooltip)
         self.assertNotIn("Warmane Armory", tooltip)
@@ -299,54 +319,35 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("--validate-only", shell_launcher)
         self.assertIn("python3", shell_launcher)
         self.assertIn("COOLSTATS_PYTHON", shell_launcher)
-        self.assertIn("Get-RunStepLabels", live_updater)
-        self.assertIn("Write-Progress", live_updater)
-        self.assertIn("Confirm-UpdatePlan", live_updater)
-        self.assertIn("Checking live AddOns write access", live_updater)
-        self.assertIn("Assert-AddOnsWriteAccess", live_updater)
-        self.assertIn("Windows denied write access", live_updater)
+        self.assertIn("update_rising_gods_live_logs.py", live_updater)
+        self.assertIn("Resolve-PythonCommand", live_updater)
+        self.assertIn("--no-install", live_updater)
+        self.assertIn("--validate-only", live_updater)
         self.assertIn("Checking live AddOns write access", linux_updater)
         self.assertIn("assert_addons_write_access", linux_updater)
         self.assertIn("is not writable", linux_updater)
-        self.assertIn("c o o l s t a t s", live_updater)
         self.assertIn("c o o l s t a t s", linux_updater)
-        self.assertIn("Rising Gods logs", live_updater)
         self.assertIn("Rising Gods logs", linux_updater)
-        self.assertIn("Get-UpdaterLayout", live_updater)
         self.assertIn("detect_layout", linux_updater)
-        self.assertIn("Kind = \"Installed\"", live_updater)
         self.assertIn('kind="Installed"', linux_updater)
-        self.assertIn("Using this release folder as AddOns path", live_updater)
         self.assertIn("Using this release folder as AddOns path", linux_updater)
         self.assertIn("coolstats_LogUpdater", launcher)
         self.assertIn("coolstats_LogUpdater", shell_launcher)
         self.assertIn("Release install detected", launcher)
         self.assertIn("Release install detected", shell_launcher)
-        self.assertIn("Continue with this update? Type Y to start", live_updater)
         self.assertIn("Continue with this update? Type Y to start", linux_updater)
-        self.assertIn('-Mode "Validate"', live_updater)
-        self.assertIn('-Mode "Weekly"', live_updater)
         self.assertIn('mode="Validate"', linux_updater)
         self.assertIn('mode="Weekly"', linux_updater)
-        self.assertIn("coolstats_Data_RisingGods", live_updater)
         self.assertIn("coolstats_Data_RisingGods", linux_updater)
-        self.assertIn("Backed up old data addon", live_updater)
         self.assertIn("Backed up old data addon", linux_updater)
         self.assertIn("ValidateOnly", live_updater)
         self.assertIn("validate-only", linux_updater)
-        self.assertIn("Resolve-OptionalLuac51Path", live_updater)
         self.assertIn("resolve_luac", linux_updater)
-        self.assertIn("Lua 5.1 validation failed; refusing to install generated data", live_updater)
         self.assertIn("Lua 5.1 validation failed", linux_updater)
-        self.assertIn("Assert-RisingGodsDataAddonShape", live_updater)
-        self.assertIn("Invoke-RisingGodsDataIntegrityAudit", live_updater)
         self.assertIn("audit_data_addon", linux_updater)
-        self.assertIn("test_rising_gods_data_integrity.ps1", live_updater)
         self.assertIn("test_rising_gods_data_integrity.py", linux_updater)
-        self.assertIn("AllowTemporaryFolderName", live_updater)
-        self.assertIn("allow_temporary_folder_name=True", linux_updater)
-        self.assertIn("rankless player rows", live_updater)
-        self.assertIn("Refusing to update from a workspace containing non-Rising-Gods realm data", live_updater)
+        self.assertIn("require_shards=True", linux_updater)
+        self.assertIn("data addon family", linux_updater)
         self.assertIn("Refusing to update from a workspace containing non-Rising-Gods realm data", linux_updater)
         self.assertNotIn("coolstats_Data_Onyxia", live_updater)
         self.assertNotIn("coolstats_Data_Onyxia", linux_updater)
@@ -406,7 +407,8 @@ class RisingGodsTests(unittest.TestCase):
         self.assertIn("--json-output", wrapper)
         self.assertIn("--boss-cache", wrapper)
         self.assertIn("--addon-version", wrapper)
-        self.assertIn("ADDON_VERSION_OVERRIDE", updater)
+        self.assertIn("--addon-version", updater)
+        self.assertIn("addon_version=args.addon_version", updater)
         self.assertNotIn("C:\\", lua_validator)
 
     def test_release_privacy_audit_blocks_local_traces(self):
@@ -431,29 +433,20 @@ class RisingGodsTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("ExpectedChunkCount = 0", audit)
         self.assertIn("expected_chunk_count: int = 0", python_audit)
-        self.assertIn("X-coolstats-PlayerChunks", audit)
+        self.assertIn("RequireShards", audit)
+        self.assertIn("--require-shards", audit)
         self.assertIn("X-coolstats-PlayerChunks", python_audit)
-        self.assertIn("ShouldSkipUwUDataChunk", audit)
         self.assertIn("ShouldSkipUwUDataChunk", python_audit)
-        self.assertIn("playerLoadSteps", audit)
         self.assertIn("playerLoadSteps", python_audit)
         self.assertIn("AllowTemporaryFolderName", audit)
         self.assertIn("allow_temporary_folder_name", python_audit)
-        self.assertIn("Duplicate player key across chunks", audit)
         self.assertIn("Duplicate player key across chunks", python_audit)
-        self.assertIn("Generated data chunks are not balanced", audit)
         self.assertIn("Generated data chunks are not balanced", python_audit)
-        self.assertIn("rankless player rows", audit)
         self.assertIn("rankless player rows", python_audit)
-        self.assertIn("coolstats_Data_RisingGods", audit)
         self.assertIn("coolstats_Data_RisingGods", python_audit)
-        self.assertIn("maxPerSpec", audit)
         self.assertIn("maxPerSpec", python_audit)
-        self.assertIn("Rising-Gods", audit)
         self.assertIn("Rising-Gods", python_audit)
-        self.assertIn("Anub'arak", audit)
         self.assertIn("Anub'arak", python_audit)
-        self.assertIn("Unexpected non-addon files", audit)
         self.assertIn("Unexpected non-addon files", python_audit)
         self.assertNotIn("coolstats_Data_Onyxia", audit)
         self.assertNotIn("coolstats_Data_Onyxia", python_audit)
@@ -465,6 +458,8 @@ class RisingGodsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_root:
             staged = Path(temp_root) / "coolstats_Data_RisingGods.__coolstats_update_tmp_123"
             shutil.copytree(source, staged)
+            for shard in (REPOSITORY_ROOT / "realm_data").glob("coolstats_Data_RisingGods_UWU_*"):
+                shutil.copytree(shard, Path(temp_root) / shard.name)
             with self.assertRaisesRegex(RuntimeError, "must be named coolstats_Data_RisingGods"):
                 audit.audit_data_addon(
                     staged,
@@ -477,6 +472,7 @@ class RisingGodsTests(unittest.TestCase):
                 expected_version=version,
                 expected_max_per_spec=600,
                 allow_temporary_folder_name=True,
+                require_shards=True,
                 quiet=True,
             )
             self.assertGreaterEqual(result["players"], 6000)

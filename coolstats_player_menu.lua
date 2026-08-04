@@ -64,9 +64,33 @@ local DROPDOWN_NAME_GLOBALS = {
 	"PlayerFrameDropDown",
 }
 
+local LEGACY_UNIT_POPUP_ACTIONS = {
+	COOLSTATS_TARGET_PLAYER = true,
+	COOLSTATS_UWU_LOGS = true,
+}
+
 local function Print(message)
 	if DEFAULT_CHAT_FRAME then
 		DEFAULT_CHAT_FRAME:AddMessage("|cff00c0ffcoolstats:|r " .. tostring(message))
+	end
+end
+
+local function RemoveLegacyUnitPopupActions()
+	if UnitPopupButtons then
+		for action in pairs(LEGACY_UNIT_POPUP_ACTIONS) do
+			UnitPopupButtons[action] = nil
+		end
+	end
+	if UnitPopupMenus then
+		for _, menu in pairs(UnitPopupMenus) do
+			if type(menu) == "table" then
+				for index = #menu, 1, -1 do
+					if LEGACY_UNIT_POPUP_ACTIONS[menu[index]] then
+						table.remove(menu, index)
+					end
+				end
+			end
+		end
 	end
 end
 
@@ -657,6 +681,7 @@ local function ShowDetachedButtonForOpenDropdown(level, value, dropdownFrame, ..
 end
 
 local function InitializeDetachedUnitPopupAction()
+	RemoveLegacyUnitPopupActions()
 	if hooked then
 		return
 	end
@@ -680,6 +705,8 @@ local function InitializeDetachedUnitPopupAction()
 		hooksecurefunc("CloseDropDownMenus", StartDetachedButtonCloseGrace)
 	end
 end
+
+RemoveLegacyUnitPopupActions()
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")

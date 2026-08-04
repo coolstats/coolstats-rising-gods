@@ -197,6 +197,15 @@ end
 local function SetCheckText(button, label)
 	local text = button and button:GetName() and _G[button:GetName() .. "Text"]
 	if text then
+		if text.SetFontObject then
+			text:SetFontObject(GameFontHighlightSmall)
+		end
+		local parent = button:GetParent()
+		local width = button.checkTextWidth or (parent and parent.checkTextWidth)
+		if width then
+			text:SetWidth(width)
+			text:SetJustifyH("LEFT")
+		end
 		text:SetText(label)
 		text:SetTextColor(0.86, 0.86, 0.78)
 	end
@@ -213,10 +222,12 @@ end
 local function CreateDescription(parent, text, yOffset)
 	local description = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	description:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, yOffset)
-	description:SetWidth(520)
+	description:SetWidth(parent.descriptionWidth or 520)
 	description:SetJustifyH("LEFT")
 	description:SetText(text)
 	description:SetTextColor(0.78, 0.78, 0.72)
+	parent.descriptions = parent.descriptions or {}
+	parent.descriptions[#parent.descriptions + 1] = description
 	return description
 end
 
@@ -245,12 +256,59 @@ local function CreateScrollableOptionsContent(panel, name, contentHeight)
 	return content
 end
 
+local function SetOptionsContentWidth(content, width)
+	if content and width then
+		content:SetWidth(width)
+		content.descriptionWidth = width - 32
+	end
+end
+
+local function CreateOptionsColumn(parent, name, xOffset, yOffset, width, height)
+	local column = CreateFrame("Frame", name, parent)
+	column:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, yOffset)
+	column:SetWidth(width)
+	column:SetHeight(height)
+	column.controls = parent.controls
+	column.descriptionWidth = width - 24
+	column.checkTextWidth = width - 54
+	return column
+end
+
+local function GetShortUwURaidLayerName(name)
+	name = tostring(name or "")
+	if string.find(name, "Icecrown", 1, true) then
+		return "ICC"
+	elseif string.find(name, "Ruby", 1, true) then
+		return "RS"
+	elseif string.find(name, "Trial", 1, true) then
+		return "TOGC"
+	elseif string.find(name, "Vault", 1, true) then
+		return "VoA"
+	end
+	return name
+end
+
+local function FormatCompactPlayerCount(value)
+	value = math.floor((tonumber(value) or 0) + 0.5)
+	if value < 1000 then
+		return tostring(value)
+	end
+	local tenths = math.floor((value + 50) / 100)
+	local whole = math.floor(tenths / 10)
+	local fraction = tenths - (whole * 10)
+	if fraction <= 0 or whole >= 100 then
+		return tostring(whole) .. "k"
+	end
+	return tostring(whole) .. "." .. tostring(fraction) .. "k"
+end
+
 local function CreateCheck(parent, name, label, yOffset, getter, setter, tooltip)
 	local check = CreateFrame("CheckButton", name, parent, "UICheckButtonTemplate")
 	check:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
 	check.getter = getter
 	check.setter = setter
 	check.tooltip = tooltip
+	check.labelText = label
 	SetCheckText(check, label)
 	check:SetScript("OnClick", function(self)
 		local checked = self:GetChecked() == 1 or self:GetChecked() == true
@@ -264,7 +322,7 @@ local function CreateCheck(parent, name, label, yOffset, getter, setter, tooltip
 			return
 		end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText(label, 1, 0.82, 0.16)
+		GameTooltip:SetText(self.tooltipTitle or label, 1, 0.82, 0.16)
 		GameTooltip:AddLine(self.tooltip, 0.86, 0.86, 0.78, true)
 		GameTooltip:Show()
 	end)
@@ -422,12 +480,15 @@ local function GetUwUPlayerLoadChunkText(loadedChunks, steps)
 	return string.format(" (%d/%d chunks)", loadedChunks, chunkCount)
 end
 
-local function GetUwUPlayerLoadReloadText(limit, total)
+local function GetUwUPlayerLoadReloadText(limit, total, compact)
 	local loaded = coolstats.GetRealmDataLoadedPlayerCount and coolstats.GetRealmDataLoadedPlayerCount() or nil
 	loaded = loaded and math.floor((tonumber(loaded) or 0) + 0.5) or nil
 	total = math.floor((tonumber(total) or 0) + 0.5)
 	limit = math.floor((tonumber(limit) or total) + 0.5)
 	if loaded and total > 0 and loaded < total and limit > loaded then
+		if compact then
+			return " /reload"
+		end
 		return string.format(" after /reload (%d loaded now)", loaded)
 	end
 	return ""
@@ -448,6 +509,20 @@ local function UpdateUwUPlayerLoadLimitSliderRange(slider)
 	slider:SetValueStep(1)
 	_G[slider:GetName() .. "Low"]:SetText("0")
 	_G[slider:GetName() .. "High"]:SetText(tostring(total))
+	local lowLabel = _G[slider:GetName() .. "Low"]
+	if lowLabel then
+		lowLabel:ClearAllPoints()
+		lowLabel:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -2, -7)
+		lowLabel:SetWidth(72)
+		lowLabel:SetJustifyH("LEFT")
+	end
+	local highLabel = _G[slider:GetName() .. "High"]
+	if highLabel then
+		highLabel:ClearAllPoints()
+		highLabel:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 2, -7)
+		highLabel:SetWidth(86)
+		highLabel:SetJustifyH("RIGHT")
+	end
 end
 
 local function UpdateUwUPlayerLoadLimitSliderText(slider)
@@ -462,11 +537,19 @@ local function UpdateUwUPlayerLoadLimitSliderText(slider)
 	local text = _G[slider:GetName() .. "Text"]
 	if text then
 		if total <= 0 then
-			text:SetText("UwU data load: no realm data found")
+			text:SetText(slider.compactLabel and "Load: no data" or "UwU data load: no realm data found")
 		elseif stepIndex >= chunkCount then
-			text:SetText("UwU data load: All " .. tostring(total) .. " players" .. GetUwUPlayerLoadReloadText(total, total))
+			if slider.compactLabel then
+				text:SetText("Load: all " .. FormatCompactPlayerCount(total) .. GetUwUPlayerLoadReloadText(total, total, true))
+			else
+				text:SetText("UwU data load: All " .. tostring(total) .. " players" .. GetUwUPlayerLoadReloadText(total, total))
+			end
 		else
-			text:SetText("UwU data load: Top " .. tostring(limit) .. " / " .. tostring(total) .. " players" .. (GetUwUPlayerLoadChunkText(stepIndex, steps) or "") .. GetUwUPlayerLoadReloadText(limit, total))
+			if slider.compactLabel then
+				text:SetText("Load: " .. FormatCompactPlayerCount(limit) .. "/" .. FormatCompactPlayerCount(total) .. GetUwUPlayerLoadReloadText(limit, total, true))
+			else
+				text:SetText("UwU data load: Top " .. tostring(limit) .. " / " .. tostring(total) .. " players" .. (GetUwUPlayerLoadChunkText(stepIndex, steps) or "") .. GetUwUPlayerLoadReloadText(limit, total))
+			end
 		end
 	end
 end
@@ -476,7 +559,7 @@ local function CreateSliderResetButton(parent, slider, yOffset, defaultValue, on
 		return nil
 	end
 	local button = CreateFrame("Button", slider:GetName() .. "ResetButton", parent, "UIPanelButtonTemplate")
-	button:SetPoint("TOPLEFT", parent, "TOPLEFT", 286, yOffset - 3)
+	button:SetPoint("TOPLEFT", parent, "TOPLEFT", parent.sliderResetX or 286, yOffset - 3)
 	button:SetWidth(56)
 	button:SetHeight(20)
 	button:SetText("Reset")
@@ -500,13 +583,14 @@ local function CreateSliderResetButton(parent, slider, yOffset, defaultValue, on
 	button:SetScript("OnLeave", function()
 		GameTooltip:Hide()
 	end)
+	slider.resetButton = button
 	return button
 end
 
 local function CreateQualitySlider(parent, yOffset)
 	local slider = CreateFrame("Slider", "coolstatsLootQualitySlider", parent, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
-	slider:SetWidth(240)
+	slider:SetWidth(parent.sliderWidth or 240)
 	slider:SetMinMaxValues(2, 5)
 	slider:SetValueStep(1)
 	slider.controlType = "lootQuality"
@@ -552,14 +636,15 @@ end
 local function CreateUwUPlayerLoadLimitSlider(parent, yOffset)
 	local slider = CreateFrame("Slider", "coolstatsUwUPlayerLoadLimitSlider", parent, "OptionsSliderTemplate")
 	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
-	slider:SetWidth(240)
+	slider:SetWidth(parent.sliderWidth or 240)
 	slider.controlType = "uwuPlayerLoadLimit"
+	slider.layoutYOffset = yOffset
 	UpdateUwUPlayerLoadLimitSliderRange(slider)
 	local label = _G[slider:GetName() .. "Text"]
 	if label then
 		label:ClearAllPoints()
-		label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 2)
-		label:SetWidth(510)
+		label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 8)
+		label:SetWidth(parent.sliderLabelWidth or 510)
 		label:SetJustifyH("LEFT")
 	end
 	slider:SetScript("OnValueChanged", function(self, value)
@@ -617,6 +702,57 @@ local function CreateUwUPlayerLoadLimitSlider(parent, yOffset)
 		end
 	end)
 	return slider
+end
+
+local function GetUwURaidLayerChoices()
+	if coolstats.GetUwUDataRaidLayerChoices then
+		return coolstats.GetUwUDataRaidLayerChoices()
+	end
+	return {}
+end
+
+local function UpdateUwURaidLayerCheck(check)
+	if not check then
+		return
+	end
+	local choices = GetUwURaidLayerChoices()
+	local choice = choices[check.layerIndex]
+	if not choice then
+		check.raidLayerKey = nil
+		check:Hide()
+		return
+	end
+	check.raidLayerKey = choice.key
+	check.raidLayerName = choice.name
+	local parent = check:GetParent()
+	local layerName = parent and parent.shortRaidLayerLabels and GetShortUwURaidLayerName(choice.name) or tostring(choice.name)
+	SetCheckText(check, "Load " .. layerName)
+	check.tooltipTitle = tostring(choice.name) .. " Logs"
+	check.tooltip = "When unchecked, this current-realm raid's boss parse payload is not loaded after /reload. The raid is also hidden from boss dropdowns and log panels."
+	check:SetChecked(choice.enabled ~= false)
+	check:Show()
+end
+
+local function CreateUwURaidLayerCheck(parent, index, yOffset)
+	local check = CreateCheck(parent, "coolstatsTooltipRaidLayer" .. tostring(index), "Load raid boss logs", yOffset, function()
+		local choices = GetUwURaidLayerChoices()
+		local choice = choices[index]
+		return not choice or choice.enabled ~= false
+	end, function(value)
+		local choices = GetUwURaidLayerChoices()
+		local choice = choices[index]
+		if choice and coolstats.SetUwURaidLayerEnabled then
+			local data = coolstatsUwUData
+			coolstats.SetUwURaidLayerEnabled(data and data.realm, data and data.phaseId, choice.key, value)
+			if coolstats.ShowUwUDataReloadPrompt then
+				coolstats.ShowUwUDataReloadPrompt()
+			end
+		end
+	end, "When unchecked, this current-realm raid's boss parse payload is not loaded after /reload.")
+	check.controlType = "uwuRaidLayer"
+	check.layerIndex = index
+	UpdateUwURaidLayerCheck(check)
+	return check
 end
 
 local function SetDropDownText(dropdown, text)
@@ -1092,6 +1228,7 @@ function coolstats.ResetOptionsPanelDefaults()
 		cacheOnHover = true,
 		cacheInspectGear = true,
 		cacheInspectTalents = true,
+		uwuRaidLayers = {},
 	}
 	db.tooltip.uwuPlayerLoadLimit = nil
 	db.itemLevelBadges = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.itemLevelBadges) or {
@@ -1155,9 +1292,14 @@ function coolstats.RefreshTooltipOptionsPanel()
 	if not panel then
 		return
 	end
+	if coolstats.LayoutTooltipOptionsPanel then
+		coolstats.LayoutTooltipOptionsPanel()
+	end
 	for index = 1, #panel.controls do
 		local control = panel.controls[index]
-		if control.getter then
+		if control.controlType == "uwuRaidLayer" then
+			UpdateUwURaidLayerCheck(control)
+		elseif control.getter then
 			control:SetChecked(control.getter())
 		elseif control.controlType == "uwuPlayerLoadLimit" then
 			control.updating = true
@@ -1185,9 +1327,134 @@ function coolstats.ResetTooltipOptionsPanelDefaults()
 		cacheOnHover = true,
 		cacheInspectGear = true,
 		cacheInspectTalents = true,
+		uwuRaidLayers = {},
 	}
 	db.tooltip.uwuPlayerLoadLimit = nil
 	RefreshAddon()
+end
+
+local function UpdateOptionsColumnLayout(column, parent, xOffset, yOffset, width, height)
+	if not column then
+		return
+	end
+	column:ClearAllPoints()
+	column:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, yOffset)
+	column:SetWidth(width)
+	column:SetHeight(height)
+	column.descriptionWidth = math.max(120, width - 36)
+	column.checkTextWidth = math.max(96, width - 68)
+	if column.descriptions then
+		for index = 1, #column.descriptions do
+			column.descriptions[index]:SetWidth(column.descriptionWidth)
+		end
+	end
+end
+
+local function UpdateOptionsCheckWidths(panel)
+	if not panel or not panel.controls then
+		return
+	end
+	for index = 1, #panel.controls do
+		local control = panel.controls[index]
+		if control and control.labelText and control.controlType ~= "uwuRaidLayer" then
+			SetCheckText(control, control.labelText)
+		end
+	end
+end
+
+local function UpdateOptionsSliderLayout(slider, parent)
+	if not slider or not parent then
+		return
+	end
+	local sliderWidth = parent.sliderWidth or 240
+	slider:SetWidth(sliderWidth)
+	local label = slider:GetName() and _G[slider:GetName() .. "Text"]
+	if label then
+		if label.SetFontObject then
+			label:SetFontObject(GameFontHighlightSmall)
+		end
+		label:SetWidth(parent.sliderLabelWidth or math.max(120, sliderWidth))
+	end
+	local resetButton = slider.resetButton
+	if resetButton then
+		resetButton:ClearAllPoints()
+		resetButton:SetPoint("TOPLEFT", parent, "TOPLEFT", parent.sliderResetX or 286, (slider.layoutYOffset or -36) - 3)
+	end
+end
+
+function coolstats.LayoutTooltipOptionsPanel()
+	local panel = coolstats.tooltipOptionsPanel
+	if not panel or not panel.content or not panel.scrollFrame or not panel.tooltipLeftColumn or not panel.tooltipRightColumn then
+		return
+	end
+	local content = panel.content
+	local visibleWidth = panel.scrollFrame.GetWidth and panel.scrollFrame:GetWidth() or 0
+	visibleWidth = math.floor((tonumber(visibleWidth) or 0) + 0.5)
+	if visibleWidth <= 0 then
+		visibleWidth = content.GetWidth and math.floor((content:GetWidth() or 520) + 0.5) or 520
+	end
+	visibleWidth = math.max(320, math.min(680, visibleWidth - 36))
+	SetOptionsContentWidth(content, visibleWidth)
+	if content.descriptions then
+		for index = 1, #content.descriptions do
+			content.descriptions[index]:SetWidth(content.descriptionWidth or visibleWidth - 32)
+		end
+	end
+
+	local leftColumn = panel.tooltipLeftColumn
+	local rightColumn = panel.tooltipRightColumn
+	if visibleWidth >= 580 then
+		local gap = 24
+		local leftWidth = math.floor((visibleWidth - gap) * 0.5)
+		local rightX = leftWidth + gap
+		local rightWidth = visibleWidth - rightX
+		UpdateOptionsColumnLayout(leftColumn, content, 0, -72, leftWidth, 370)
+		UpdateOptionsColumnLayout(rightColumn, content, rightX, -72, rightWidth, 370)
+		rightColumn.sliderWidth = math.max(140, math.min(190, rightWidth - 120))
+		rightColumn.sliderResetX = math.min(rightWidth - 64, rightColumn.sliderWidth + 50)
+		rightColumn.sliderLabelWidth = math.max(140, math.min(rightWidth - 34, rightColumn.sliderWidth + 70))
+		rightColumn.checkTextWidth = math.max(120, rightWidth - 86)
+		rightColumn.descriptionWidth = math.max(150, rightWidth - 34)
+		rightColumn.shortRaidLayerLabels = true
+		if panel.uwuPlayerLoadLimitSlider then
+			panel.uwuPlayerLoadLimitSlider.compactLabel = true
+		end
+		if panel.uwuPlayerLoadDescription then
+			panel.uwuPlayerLoadDescription:SetText("Fewer players after /reload.")
+		end
+		if panel.raidLayerDescription then
+			panel.raidLayerDescription:SetText("Hide raids now; save memory after /reload.")
+		end
+		content:SetHeight(470)
+	else
+		local columnWidth = visibleWidth
+		UpdateOptionsColumnLayout(leftColumn, content, 0, -72, columnWidth, 330)
+		UpdateOptionsColumnLayout(rightColumn, content, 0, -414, columnWidth, 330)
+		rightColumn.sliderWidth = math.max(150, math.min(260, columnWidth - 120))
+		rightColumn.sliderResetX = math.min(columnWidth - 62, rightColumn.sliderWidth + 54)
+		rightColumn.sliderLabelWidth = math.max(180, columnWidth - 48)
+		rightColumn.checkTextWidth = math.max(160, columnWidth - 68)
+		rightColumn.descriptionWidth = math.max(180, columnWidth - 36)
+		rightColumn.shortRaidLayerLabels = true
+		if panel.uwuPlayerLoadLimitSlider then
+			panel.uwuPlayerLoadLimitSlider.compactLabel = false
+		end
+		if panel.uwuPlayerLoadDescription then
+			panel.uwuPlayerLoadDescription:SetText("Lower values use fewer players after /reload. Raising above loaded data also needs /reload.")
+		end
+		if panel.raidLayerDescription then
+			panel.raidLayerDescription:SetText("Unchecked raids hide now; memory savings apply after /reload.")
+		end
+		content:SetHeight(760)
+	end
+	if rightColumn.descriptions then
+		for index = 1, #rightColumn.descriptions do
+			rightColumn.descriptions[index]:SetWidth(rightColumn.descriptionWidth)
+		end
+	end
+	UpdateOptionsCheckWidths(panel)
+	UpdateOptionsSliderLayout(panel.uwuPlayerLoadLimitSlider, rightColumn)
+	UpdateUwUPlayerLoadLimitSliderText(panel.uwuPlayerLoadLimitSlider)
 end
 
 function coolstats.RefreshLootToastOptionsPanel()
@@ -1315,32 +1582,44 @@ function coolstats.CreateTooltipOptionsPanel()
 	panel.cancel = function() end
 	coolstats.tooltipOptionsPanel = panel
 
-	local content = CreateScrollableOptionsContent(panel, "coolstatsTooltipOptions", 560)
+	local content = CreateScrollableOptionsContent(panel, "coolstatsTooltipOptions", 470)
+	SetOptionsContentWidth(content, 520)
 	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
 	title:SetText("coolstats Tooltip & Cache")
 	title:SetTextColor(0.0, 0.75, 1.0)
 
 	CreateDescription(content, "Choose what appears on player tooltips and how inspect-based caches update.", -42)
-	CreateHeading(content, "Tooltip Lines", -78)
-	CreateCheck(content, "coolstatsTooltipGuildRank", "Show guild rank", -104, function()
+	local leftColumn = CreateOptionsColumn(content, "coolstatsTooltipOptionsLeftColumn", 0, -72, 258, 370)
+	local rightColumn = CreateOptionsColumn(content, "coolstatsTooltipOptionsRightColumn", 262, -72, 258, 370)
+	panel.tooltipLeftColumn = leftColumn
+	panel.tooltipRightColumn = rightColumn
+	rightColumn.sliderWidth = 142
+	rightColumn.sliderResetX = 196
+	rightColumn.sliderLabelWidth = 210
+	rightColumn.checkTextWidth = 190
+	rightColumn.descriptionWidth = 222
+	rightColumn.shortRaidLayerLabels = true
+
+	CreateHeading(leftColumn, "Tooltip Lines", 0)
+	CreateCheck(leftColumn, "coolstatsTooltipGuildRank", "Show guild rank", -26, function()
 		return GetTooltipOptions().guildRank ~= false
 	end, function(value)
 		GetTooltipOptions().guildRank = value
 	end, "Replace the default guild line with the player's guild rank and guild name.")
-	CreateCheck(content, "coolstatsTooltipClassLine", "Show class line", -132, function()
+	CreateCheck(leftColumn, "coolstatsTooltipClassLine", "Show class line", -54, function()
 		return GetTooltipOptions().classLine ~= false
 	end, function(value)
 		GetTooltipOptions().classLine = value
 	end, "Add a class-colored class name to player tooltips.")
-	CreateCheck(content, "coolstatsTooltipTarget", "Show current target", -160, function()
+	CreateCheck(leftColumn, "coolstatsTooltipTarget", "Show current target", -82, function()
 		return GetTooltipOptions().target ~= false
 	end, function(value)
 		GetTooltipOptions().target = value
 	end, "Show who the hovered player is currently targeting.")
 
-	CreateHeading(content, "Inspect Cache", -200)
-	CreateCheck(content, "coolstatsTooltipCacheGear", "Cache inspectable gear", -226, function()
+	CreateHeading(leftColumn, "Inspect Cache", -122)
+	CreateCheck(leftColumn, "coolstatsTooltipCacheGear", "Cache inspectable gear", -148, function()
 		local options = GetTooltipOptions()
 		if options.cacheInspectGear == nil and options.cacheOnHover ~= nil then
 			return options.cacheOnHover ~= false
@@ -1351,37 +1630,52 @@ function coolstats.CreateTooltipOptionsPanel()
 		options.cacheInspectGear = value
 		options.cacheOnHover = value
 	end, "Allow inspect, target, hover, and lookup flows to update cached gear snapshots.")
-	CreateCheck(content, "coolstatsTooltipCacheTalents", "Cache inspectable talents", -254, function()
+	CreateCheck(leftColumn, "coolstatsTooltipCacheTalents", "Cache inspectable talents", -176, function()
 		return GetTooltipOptions().cacheInspectTalents ~= false
 	end, function(value)
 		GetTooltipOptions().cacheInspectTalents = value
 	end, "Allow inspect and talent-panel flows to update cached talent snapshots.")
 
-	CreateHeading(content, "Player Browser", -298)
-	CreateUwUPlayerLoadLimitSlider(content, -324)
-	CreateDescription(content, "Lower values retain fewer current-realm UwU players after /reload. Increasing above the data already loaded this session also needs /reload.", -356)
-
-	CreateHeading(content, "Logs And Progress", -398)
-	CreateCheck(content, "coolstatsTooltipLogsSummary", "Show logs summary", -424, function()
+	CreateHeading(leftColumn, "Logs And Progress", -220)
+	CreateCheck(leftColumn, "coolstatsTooltipLogsSummary", "Show logs summary", -246, function()
 		return GetTooltipOptions().logsSummary ~= false
 	end, function(value)
 		GetTooltipOptions().logsSummary = value
 	end, "Show the player's best available logs score.")
-	CreateCheck(content, "coolstatsTooltipLogsBosses", "Show boss parses while holding Alt", -452, function()
+	CreateCheck(leftColumn, "coolstatsTooltipLogsBosses", "Show boss parses with Alt", -274, function()
 		return GetTooltipOptions().logsBossDetails ~= false
 	end, function(value)
 		GetTooltipOptions().logsBossDetails = value
 	end, "Show individual boss parses while Alt is held.")
-	CreateCheck(content, "coolstatsTooltipRaidFallback", "Show raid progress summary", -480, function()
+	CreateCheck(leftColumn, "coolstatsTooltipRaidFallback", "Show raid progress summary", -302, function()
 		return GetTooltipOptions().raidProgressFallback ~= false
 	end, function(value)
 		GetTooltipOptions().raidProgressFallback = value
 	end, "Use available logs for raid progress, or request achievement progress as a fallback when logs are missing.")
 
+	CreateHeading(rightColumn, "Player Browser", 0)
+	panel.uwuPlayerLoadLimitSlider = CreateUwUPlayerLoadLimitSlider(rightColumn, -36)
+	panel.uwuPlayerLoadDescription = CreateDescription(rightColumn, "Lower values use fewer players after /reload. Raising above loaded data also needs /reload.", -70)
+
+	CreateHeading(rightColumn, "Raid Data Layers", -124)
+	panel.raidLayerDescription = CreateDescription(rightColumn, "Unchecked raids hide now; memory savings apply after /reload.", -150)
+	CreateUwURaidLayerCheck(rightColumn, 1, -194)
+	CreateUwURaidLayerCheck(rightColumn, 2, -222)
+	CreateUwURaidLayerCheck(rightColumn, 3, -250)
+	CreateUwURaidLayerCheck(rightColumn, 4, -278)
+	CreateUwURaidLayerCheck(rightColumn, 5, -306)
+
 	if InterfaceOptions_AddCategory then
 		InterfaceOptions_AddCategory(panel)
 	end
 	panel:SetScript("OnShow", coolstats.RefreshTooltipOptionsPanel)
+	if panel.SetScript then
+		panel:SetScript("OnSizeChanged", function()
+			if coolstats.LayoutTooltipOptionsPanel then
+				coolstats.LayoutTooltipOptionsPanel()
+			end
+		end)
+	end
 	coolstats.RefreshTooltipOptionsPanel()
 	return panel
 end

@@ -27,11 +27,21 @@ if (Test-Path -LiteralPath $validationRoot) {
 
 try {
 	Expand-Archive -LiteralPath $ZipPath -DestinationPath $validationRoot
-	$expectedFolders = @("coolstats", "coolstats_Cache", "coolstats_Data_RisingGods", "coolstats_LogUpdater")
 	$actualFolders = @(Get-ChildItem -LiteralPath $validationRoot -Directory | Select-Object -ExpandProperty Name | Sort-Object)
-	$expectedSorted = @($expectedFolders | Sort-Object)
-	if (($actualFolders -join "|") -ne ($expectedSorted -join "|")) {
-		throw "Unexpected top-level addon folders. Expected $($expectedSorted -join ', '); found $($actualFolders -join ', ')."
+	$requiredFolders = @("coolstats", "coolstats_Cache", "coolstats_Data_RisingGods", "coolstats_LogUpdater")
+	foreach ($folder in $requiredFolders) {
+		if ($actualFolders -notcontains $folder) {
+			throw "Missing required top-level addon folder: $folder"
+		}
+	}
+	$allowedDataPrefix = "coolstats_Data_RisingGods_UWU_"
+	$unexpectedFolders = @(
+		$actualFolders | Where-Object {
+			$requiredFolders -notcontains $_ -and -not $_.StartsWith($allowedDataPrefix, [System.StringComparison]::Ordinal)
+		}
+	)
+	if ($unexpectedFolders.Count -gt 0) {
+		throw "Unexpected top-level addon folders: $($unexpectedFolders -join ', ')."
 	}
 
 	$requiredLaunchers = @(
@@ -73,6 +83,10 @@ try {
 		(Join-Path $validationRoot "coolstats_Cache\coolstats_Cache.toc"),
 		(Join-Path $validationRoot "coolstats_Data_RisingGods\coolstats_Data_RisingGods.toc")
 	)
+	$tocPaths += @(
+		Get-ChildItem -LiteralPath $validationRoot -Directory -Filter "coolstats_Data_RisingGods_UWU_*" |
+			ForEach-Object { Join-Path $_.FullName ($_.Name + ".toc") }
+	)
 	foreach ($tocPath in $tocPaths) {
 		$versionLine = Select-String -LiteralPath $tocPath -Pattern "^## Version:\s*(.+)$" | Select-Object -First 1
 		if (-not $versionLine -or $versionLine.Matches[0].Groups[1].Value.Trim() -ne $Version) {
@@ -88,19 +102,19 @@ try {
 		throw "Rising Gods phase metadata is missing or incorrect."
 	}
 
+	$baseDataText = Get-Content -LiteralPath (Join-Path $validationRoot "coolstats_Data_RisingGods\data\logs\icc\coolstats_uwu_data.lua") -Raw
 	$chunkLine = Select-String -LiteralPath $dataToc -Pattern "^## X-coolstats-PlayerChunks:\s*(\d+)$" | Select-Object -First 1
 	if (-not $chunkLine) {
 		throw "Rising Gods player chunk metadata is missing."
 	}
 	$chunkCount = [int]$chunkLine.Matches[0].Groups[1].Value
-	$requiredData = @("coolstats_uwu_data.lua")
-	for ($index = 1; $index -le $chunkCount; $index += 1) {
-		$requiredData += ("coolstats_uwu_data_{0:D2}.lua" -f $index)
+	if ($baseDataText -notmatch "playerShardAddons\s*=") {
+		throw "Rising Gods release data must use player shard addons."
 	}
-	foreach ($file in $requiredData) {
-		$path = Join-Path $validationRoot "coolstats_Data_RisingGods\data\logs\icc\$file"
-		if (-not (Test-Path -LiteralPath $path)) {
-			throw "Missing generated Rising Gods data file: $file"
+	for ($index = 1; $index -le $chunkCount; $index += 1) {
+		$shardName = "coolstats_Data_RisingGods_UWU_{0:D2}" -f $index
+		if (-not (Test-Path -LiteralPath (Join-Path $validationRoot $shardName) -PathType Container)) {
+			throw "Missing generated Rising Gods player shard: $shardName"
 		}
 	}
 
@@ -114,7 +128,7 @@ try {
 	if (-not (Test-Path -LiteralPath $auditScript)) {
 		throw "Missing Rising Gods data integrity audit: $auditScript"
 	}
-	& $auditScript -DataAddonPath (Join-Path $validationRoot "coolstats_Data_RisingGods") -ExpectedVersion $Version -ExpectedMaxPerSpec 600 -Quiet
+	& $auditScript -DataAddonPath (Join-Path $validationRoot "coolstats_Data_RisingGods") -ExpectedVersion $Version -ExpectedMaxPerSpec 600 -RequireShards -Quiet
 }
 finally {
 	if (Test-Path -LiteralPath $validationRoot) {
