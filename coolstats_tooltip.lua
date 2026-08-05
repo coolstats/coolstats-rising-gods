@@ -8268,6 +8268,15 @@ if type(coolstats) == "table" then
 
 	coolstats.CHANGELOG_ENTRIES = {
 		{
+			version = "0.2.39-rg1",
+			date = "2026-08-05",
+			notes = {
+				"Changed first-run feature guide completion to account-wide saved variables so finishing it once covers every character on the account.",
+				"Migrates existing per-character guide completion into the new account-level completion flag.",
+				"Restored the neon-blue public updater launcher styling and added the generated Warperia install branch flow for Rising Gods.",
+			},
+		},
+		{
 			version = "0.2.38-rg1",
 			date = "2026-08-04",
 			notes = {
@@ -8711,6 +8720,23 @@ if type(coolstats) == "table" then
 		return coolstatsDB.guide
 	end
 
+	function coolstats.MigrateFeatureGuideCompletion(state, key)
+		if key ~= "browserVersion" or type(state) ~= "table" or type(state.characters) ~= "table" then
+			return
+		end
+		local migratedVersion = tonumber(state[key]) or 0
+		for _, version in pairs(state.characters) do
+			version = tonumber(version) or 0
+			if version > migratedVersion then
+				migratedVersion = version
+			end
+		end
+		state.characters = nil
+		if migratedVersion > 0 then
+			state[key] = migratedVersion
+		end
+	end
+
 	function coolstats.GetFeatureGuideCharacterKey()
 		local name, realm
 		if UnitFullName then
@@ -8732,15 +8758,7 @@ if type(coolstats) == "table" then
 	function coolstats.GetFeatureGuideCompletionVersion(key)
 		local state = coolstats.GetFeatureGuideState()
 		key = key or "browserVersion"
-		if key == "browserVersion" then
-			local characterKey = coolstats.GetFeatureGuideCharacterKey and coolstats.GetFeatureGuideCharacterKey()
-			if characterKey then
-				if type(state.characters) ~= "table" then
-					state.characters = {}
-				end
-				return tonumber(state.characters[characterKey]) or 0
-			end
-		end
+		coolstats.MigrateFeatureGuideCompletion(state, key)
 		return tonumber(state[key]) or 0
 	end
 
@@ -8748,14 +8766,7 @@ if type(coolstats) == "table" then
 		local state = coolstats.GetFeatureGuideState()
 		key = key or "browserVersion"
 		if key == "browserVersion" then
-			local characterKey = coolstats.GetFeatureGuideCharacterKey and coolstats.GetFeatureGuideCharacterKey()
-			if characterKey then
-				if type(state.characters) ~= "table" then
-					state.characters = {}
-				end
-				state.characters[characterKey] = coolstats.FEATURE_GUIDE_VERSION
-				return
-			end
+			state.characters = nil
 		end
 		state[key] = coolstats.FEATURE_GUIDE_VERSION
 	end

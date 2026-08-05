@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Trial of the Grand Crusader 01
 ## Notes: Optional Trial of the Grand Crusader UwU Logs layer 1/6 for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.38-rg1
+## Version: 0.2.39-rg1
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats, coolstats_Data_RisingGods

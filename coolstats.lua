@@ -102,7 +102,6 @@ local defaults = {
 	updateCenter = {},
 	guide = {
 		browserVersion = 0,
-		characters = {},
 	},
 }
 
