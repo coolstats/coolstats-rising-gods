@@ -87,7 +87,7 @@ function Validate-InstallRoot {
 		"Update_Rising_Gods_Logs.sh"
 	)
 	$rootFiles = Get-ChildItem -LiteralPath $Path -Force -File |
-		Where-Object { $allowedRootFiles -notcontains $_.Name }
+		Where-Object { $_.Name -ne ".git" -and $allowedRootFiles -notcontains $_.Name }
 	if ($rootFiles.Count -gt 0) {
 		throw "Warperia install root has unexpected files: $($rootFiles.Name -join ', ')"
 	}

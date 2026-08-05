@@ -8268,6 +8268,14 @@ if type(coolstats) == "table" then
 
 	coolstats.CHANGELOG_ENTRIES = {
 		{
+			version = "0.2.39-rg2",
+			date = "2026-08-05",
+			notes = {
+				"Fixed the generated Warperia branch publisher so it accepts git worktree metadata while still validating the install-shaped root.",
+				"Rebuilt the Rising Gods release pipeline so source, ZIP, and Warperia branch stay aligned.",
+			},
+		},
+		{
 			version = "0.2.39-rg1",
 			date = "2026-08-05",
 			notes = {

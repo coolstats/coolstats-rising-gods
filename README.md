@@ -16,7 +16,7 @@ this repository.
 
 ## Current Bundled Logs Coverage
 
-As of `0.2.39-rg1`, the bundled data is:
+As of `0.2.39-rg2`, the bundled data is:
 
 - **Realm:** Rising-Gods
 - **Phase:** ICC profile
@@ -438,8 +438,8 @@ Scripts are tracked in `tools/`:
 .\tools\update_rising_gods.ps1 -Mode Weekly -BossName Pentendo
 
 # Test, validate, package, and verify a release.
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.39-rg1
-.\tools\publish_rising_gods_warperia_branch.ps1 -Version 0.2.39-rg1 -Push
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.39-rg2
+.\tools\publish_rising_gods_warperia_branch.ps1 -Version 0.2.39-rg2 -Push
 ```
 
 See [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for updater and release safety
