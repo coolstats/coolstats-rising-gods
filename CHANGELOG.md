@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.39-rg2 - 2026-08-05
+
+### Distribution
+
+- Fixed the generated Warperia branch publisher so it accepts git worktree
+  metadata while still validating that the branch root is install-shaped.
+- Rebuilt the release after the publisher fix so `main`, the release ZIP, and
+  the generated Warperia branch all use the same Rising Gods pipeline.
+
 ## 0.2.39-rg1 - 2026-08-05
 
 ### Warmane 0.2.39 parity

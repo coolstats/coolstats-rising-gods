@@ -104,8 +104,8 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.39-rg1
-.\tools\publish_rising_gods_warperia_branch.ps1 -Version 0.2.39-rg1 -Push
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.39-rg2
+.\tools\publish_rising_gods_warperia_branch.ps1 -Version 0.2.39-rg2 -Push
 ```
 
 Generated runtime data:
@@ -124,7 +124,7 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.39-rg1`.
+- Tag releases as `v<version>`, for example `v0.2.39-rg2`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane

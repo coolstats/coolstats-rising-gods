@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Vault of Archavon 04
 ## Notes: Optional Vault of Archavon UwU Logs layer 4/6 for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.39-rg1
+## Version: 0.2.39-rg2
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats, coolstats_Data_RisingGods
