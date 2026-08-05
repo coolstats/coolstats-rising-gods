@@ -45,6 +45,11 @@ addon family rooted at `coolstats_Data_RisingGods`.
 16. GitHub publishing must target only `https://github.com/coolstats/coolstats-rising-gods.git`.
 17. Commits, tags, releases, and uploaded assets must be associated only with `coolstats <coolstats@users.noreply.github.com>`.
 18. After publishing, verify the GitHub contributors/sidebar data still reports only `coolstats`.
+19. For Warperia launcher installs, keep the GitHub default branch set to the
+    generated `warperia` branch. Keep `main` as the source/release branch and
+    rebuild `warperia` from the exact install-ready release ZIP so the default
+    branch root contains sibling addon folders plus the public updater
+    launchers, not the source workspace layout.
 
 ## Public data updater
 
@@ -99,7 +104,8 @@ bash ./Update_Rising_Gods_Logs.sh --no-install
 .\tools\update_rising_gods_live_logs.ps1 -NoInstall
 python3 ./tools/update_rising_gods_live_logs.py --validate-only
 .\tools\validate_lua51.ps1
-.\tools\prepare_rising_gods_release.ps1 -Version 0.2.38-rg1
+.\tools\prepare_rising_gods_release.ps1 -Version 0.2.39-rg1
+.\tools\publish_rising_gods_warperia_branch.ps1 -Version 0.2.39-rg1 -Push
 ```
 
 Generated runtime data:
@@ -118,8 +124,28 @@ data/uwu_character_boss_cache_rising_gods.json
 
 ## Release naming
 
-- Tag releases as `v<version>`, for example `v0.2.38-rg1`.
+- Tag releases as `v<version>`, for example `v0.2.39-rg1`.
 - Title GitHub Releases as `coolstats Rising Gods <version>`.
 - Upload `coolstats_rising_gods_<version>.zip` as the release asset.
 - Do not use Warmane release assets, Warmane realm-data folders, or Warmane
   generated JSON/cache files in this repository.
+
+## Warperia launcher branch
+
+Warperia's GitHub launcher flow consumes the repository source tree from the
+default branch. For `coolstats/coolstats-rising-gods`, the GitHub default branch
+should be `warperia`, not `main`, because `main` is the source workspace and
+contains `cache_addon/`, `realm_data/`, `data/`, tooling, and docs that are not
+an install-shaped AddOns root.
+
+The `warperia` branch is a build artifact. Do not hand-edit it. After packaging
+and validating a release ZIP, rebuild it from that exact ZIP:
+
+```powershell
+.\tools\publish_rising_gods_warperia_branch.ps1 -Version <version> -Push
+```
+
+The branch root must contain the same install-ready sibling folders as the ZIP:
+`coolstats`, `coolstats_Cache`, `coolstats_Data_RisingGods`,
+`coolstats_Data_RisingGods_UWU_*`, `coolstats_LogUpdater`, the public updater
+launchers, and a README copied from source with local asset paths rewritten.

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.39-rg1 - 2026-08-05
+
+### Warmane 0.2.39 parity
+
+- Changed the first-run feature guide completion flag to be account-wide. Once
+  the guide is completed on any character, it stays completed for every
+  character on that WoW account.
+- Added migration from the previous per-character guide completion table into
+  the new account-level completion version.
+
+### Distribution
+
+- Restored the neon-blue/cyan public updater launcher styling for both Windows
+  and Linux while keeping the launchers relative-path-only and credential-free.
+- Added the generated Rising Gods Warperia install branch pipeline so launcher
+  installs can use the same install-shaped layout as the release ZIP.
+
 ## 0.2.38-rg1 - 2026-08-04
 
 ### Rising Gods UwU data repair

@@ -1,8 +1,8 @@
-﻿## Interface: 30300
+## Interface: 30300
 ## Title: |cff00c0ffcoolstats|r - Rising Gods
 ## Notes: Rising Gods edition: character stats, UwU Logs, cached gear/talents, player browser, and loot alerts.
 ## Author: coolstats
-## Version: 0.2.38-rg1
+## Version: 0.2.39-rg1
 ## SavedVariables: coolstatsDB
 ## OptionalDeps: coolstats_Cache, BonusScanner, GearScore
 
