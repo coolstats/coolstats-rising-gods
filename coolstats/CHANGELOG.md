@@ -1,0 +1,339 @@
+# Changelog
+
+## 0.2.39-rg2 - 2026-08-05
+
+### Distribution
+
+- Fixed the generated Warperia branch publisher so it accepts git worktree
+  metadata while still validating that the branch root is install-shaped.
+- Rebuilt the release after the publisher fix so `main`, the release ZIP, and
+  the generated Warperia branch all use the same Rising Gods pipeline.
+
+## 0.2.39-rg1 - 2026-08-05
+
+### Warmane 0.2.39 parity
+
+- Changed the first-run feature guide completion flag to be account-wide. Once
+  the guide is completed on any character, it stays completed for every
+  character on that WoW account.
+- Added migration from the previous per-character guide completion table into
+  the new account-level completion version.
+
+### Distribution
+
+- Restored the neon-blue/cyan public updater launcher styling for both Windows
+  and Linux while keeping the launchers relative-path-only and credential-free.
+- Added the generated Rising Gods Warperia install branch pipeline so launcher
+  installs can use the same install-shaped layout as the release ZIP.
+
+## 0.2.38-rg1 - 2026-08-04
+
+### Rising Gods UwU data repair
+
+- Refreshed the Rising-Gods ICC dataset with the new sharded data architecture.
+- Fixed a renamed/custom-character edge case where bulk boss leaderboards could
+  de-duplicate an old UwU GUID name before the current retained player name was
+  matched, leaving summary rank data visible but boss rows blank.
+- Added an automatic targeted character repair pass for active ranked players
+  whose best-spec boss payload is still empty after the bulk leaderboard pass.
+  This repairs players such as `Nìíro` while keeping the regular update path
+  bulk-first and fast.
+- Verified `Nìíro` and `Niiró` remain separate player keys and now both receive
+  their own boss-layer shard rows.
+
+### Warmane 0.2.38 parity
+
+- Ported the latest shared runtime improvements: first-run feature guide,
+  in-game changelog, update center polish, dialog z-order fixes, right-click
+  UWU Logs actions, cached gear/talent panel fixes, and browser cleanup.
+- Added the latest browser and statistics behavior, including selected-boss
+  DPS/parse fields, per-boss distributions, disposable browser indexes, capped
+  tooltip caches, and `/cs perf` memory diagnostics.
+- Kept Rising Gods profile links pointed at
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<name>`.
+
+### Rising Gods data architecture
+
+- Migrated generated Rising Gods data from inline Lua chunks into
+  load-on-demand player shard addons named `coolstats_Data_RisingGods_UWU_XX`.
+- Split boss payloads into aligned raid-layer shard addons for ICC, Vault of
+  Archavon, Ruby Sanctum, and TOGC so raid toggles and the data-load slider can
+  reduce memory after `/reload`.
+- Updated release packaging, release validation, Lua data integrity audits, and
+  public updater validation to require the full sharded data addon family.
+
+### Public updaters
+
+- Updated `Update_Rising_Gods_Logs.bat` and `Update_Rising_Gods_Logs.sh` so
+  they rebuild, validate, back up, and install the full Rising Gods data addon
+  family without touching the core addon or cache addon.
+- Kept both public updaters relative-path-only, credential-free, and
+  Python-source based for auditability.
+
+## 0.2.35-rg1 - 2026-07-27
+
+### Warmane parity port
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.35`.
+- Added the player-browser memory indicator, cache guidance tooltip, and
+  player data-load slider for lower-memory setups.
+- Added boss-filter browser improvements, boss DPS visibility, Statistics
+  drilldowns, and the updated tabard-style browser/log/statistics backdrops.
+- Added the plain-text log summary button and Rising Gods profile button flows.
+- Brought over the gear/talent cache fixes, including gem display recovery and
+  separate gear/talent cache toggles.
+- Brought over the safer detached UWU Logs right-click menu behavior for
+  player frames and chat names.
+
+### Rising Gods data architecture
+
+- Rebuilt generated UwU data around dynamic player chunks. The data TOC now
+  writes `X-coolstats-PlayerCount` and `X-coolstats-PlayerChunks`, and chunk
+  files include skip guards so the in-game data-load slider can avoid loading
+  lower-ranked chunks after `/reload`.
+- Kept Rising Gods ranked coverage at the established top 600 players per
+  class/specialization.
+- Updated the Windows and Linux public updaters, release validator, and data
+  integrity audits for dynamic chunk metadata.
+- Changed duplicate-name ranking repair to use bounded parallel workers and
+  capped preview logging, then run targeted character boss repair only for
+  resolved ambiguous names.
+
+### Data refresh
+
+- Refreshed Rising-Gods ICC data on 2026-07-27 with 10,075 active ranked
+  players.
+- Generated 6 dynamic player chunks with 10,075 total player rows.
+- Ran bulk boss refreshes for Icecrown Citadel, Toravon, Halion, and Anub'arak,
+  followed by targeted duplicate-name and Pentendo boss-row repair.
+
+## 0.2.34-rg6 - 2026-07-25
+
+### Rising Gods data integrity
+
+- Fixed duplicate-character-name handling for reused Rising Gods names, where
+  UwU Logs can expose old and current records under the same display name. The
+  updater now confirms ambiguous ranking rows through the character endpoint
+  and automatically repairs boss rows for those players after the bulk
+  leaderboard pass.
+- Fixed inflated boss parse estimates on capped 10,000-row leaderboards by
+  scoring player-rank components against the seen unique-player population
+  instead of the log-row cap.
+- Refreshed the Rising-Gods ICC data on 2026-07-25 with 10,072 active ranked
+  players and automatic duplicate-name boss repairs.
+
+### Public log updater
+
+- Added duplicate-name safeguard notes to the Windows and Linux launchers and
+  confirmation screens so public data refreshes explain the automatic reused
+  character-name repair.
+
+## 0.2.34-rg5 - 2026-07-25
+
+### Public log updater
+
+- Fixed live-install validation so the staged temporary data folder
+  `coolstats_Data_RisingGods.__coolstats_update_tmp...` is accepted during the
+  pre-install audit while the final installed folder must still be named exactly
+  `coolstats_Data_RisingGods`.
+- Added an early live `Interface/AddOns` write-access check before the updater
+  downloads new data, with clearer guidance for Windows installs under
+  protected folders such as `Program Files`.
+- Improved temporary-folder error messages for stale or locked update folders.
+- Applied the same install safety fixes to both the Windows/PowerShell and
+  Linux/Python updater paths.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg5`.
+
+## 0.2.34-rg4 - 2026-07-24
+
+### Public log updater
+
+- Added `Update_Rising_Gods_Logs.sh` as a Linux/Bazzite/Ubuntu/SteamOS-friendly
+  launcher for refreshing Rising Gods data without PowerShell.
+- Added a cross-platform Python live updater and data integrity audit so Linux
+  users get the same confirmation, progress, staging, backup, validation, and
+  data-only install flow as the Windows BAT.
+- Labeled the public launchers as Windows / PowerShell and Linux / Bash in the
+  updater shell UI so the two entry points are easy to tell apart.
+- Updated release packaging, validation, and privacy scans so the Linux launcher
+  and Python helpers ship with the same no-local-path/no-credential guarantees.
+
+### Documentation
+
+- Rebuilt the README to match the current feature set: player browser boss
+  filters, boss DPS columns, histograms, Statistics drilldowns, Update Center,
+  Rising Gods profile links, public data updaters, commands, privacy, and
+  release layout.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg4`.
+
+## 0.2.34-rg3 - 2026-07-24
+
+### Public log updater
+
+- Added `Update_Rising_Gods_Logs.bat` to the release ZIP root so users can
+  refresh Rising Gods UwU Logs data themselves after extracting the addon.
+- Shipped the readable helper scripts in `coolstats_LogUpdater/tools/` instead
+  of a compiled executable.
+- Made release installs plug-and-play: when the ZIP is extracted directly into
+  `Interface\AddOns`, the BAT auto-detects that folder and updates only
+  `coolstats_Data_RisingGods`.
+
+### Safety and privacy
+
+- Added a fail-closed Rising Gods data integrity audit covering TOC wiring, ICC
+  boss coverage, six generated chunks, chunk balance, duplicate Lua keys,
+  ranked-player count, and rankless-row guards.
+- Added a release privacy audit that blocks maintainer-local paths, usernames,
+  saved AddOns paths, credentials, and non-`coolstats` GitHub owners from the
+  downloadable ZIP.
+- Validated staged data before replacement and validated the copied live data
+  addon again after replacement.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg3`.
+- Kept the bundled data refreshed at 10,075 active ranked players across the 13
+  configured ICC-era encounters.
+
+## 0.2.34-rg2 - 2026-07-24
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs on 2026-07-24.
+- Expanded the weekly ranked pull from 400 to 600 players per class/spec.
+- Bundled 10,075 active ranked players across the 13 configured ICC-era
+  encounters.
+- Completed 390 bulk boss requests with 129,436 bundled boss rows, no failed
+  requests, and no boss-only players added.
+- Added a targeted post-bulk character-profile repair path and used it to
+  restore Pentendo's complete available boss parse set.
+
+### Updater safety
+
+- Hardened bulk boss refreshes so a transient partial bulk response cannot
+  shrink an already cached player's boss rows.
+- Added tests for the cached-boss merge behavior and the Rising Gods weekly
+  refresh defaults.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg2`.
+
+## 0.2.34-rg1 - 2026-07-24
+
+### Core sync
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.34`.
+- Added the Update Center, group version/data freshness checks, and browser
+  toolbar Update button.
+- Added the cached Statistics panel with specialization representation bars,
+  boss-specific drilldown, tabard backgrounds, and bottom sum validation.
+- Added the Boss DPS browser column when an individual boss filter is selected.
+- Kept the restored Log Analysis geometry so the comparison chart does not
+  overflow the analysis window.
+
+### Rising Gods
+
+- Replaced Warmane Armory actions with Rising Gods profile links using
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<character>`.
+- Kept Rising Gods realm loading isolated to `coolstats_Data_RisingGods`.
+- Preserved the Rising Gods cache diagnostics and `/coolstats cachedebug`
+  helper while syncing the shared runtime.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs on 2026-07-24.
+- Bundled 7,429 active ranked players across the 13 configured ICC-era
+  encounters.
+- Completed 390 bulk boss requests with 101,805 bundled boss rows, no failed
+  requests, and no boss-only players added.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.34-rg1`.
+- Kept release packaging limited to `coolstats`, `coolstats_Cache`, and
+  `coolstats_Data_RisingGods`.
+
+## 0.2.29-rg1 - 2026-07-16
+
+### Core sync
+
+- Ported the shared addon runtime from upstream coolstats `v0.2.29`.
+- Added the updated player-browser boss filter, individual boss sort mode, taller color-coded parse histogram, and connected distribution curve.
+- Kept Rising Gods realm handling isolated to `coolstats_Data_RisingGods`.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile from UwU Logs.
+- Bundled 7,422 active ranked players across the 13 configured ICC-era encounters.
+- Completed 390 bulk boss requests with 101,671 bundled boss rows and no failed leaderboard or boss refresh requests.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.29-rg1`.
+- Kept release packaging limited to `coolstats`, `coolstats_Cache`, and `coolstats_Data_RisingGods`.
+
+## 0.2.26-rg2 - 2026-07-11
+
+### Rising Gods cache
+
+- Hardened cached gear/talent snapshots by actively requesting inspect data on hover, forcing inspect refreshes when opening cached talents, and using `INSPECT_READY` as a safe talent-capture fallback.
+- Added immediate browser-row updates when a gear snapshot is written.
+- Added `/coolstats cachedebug [player]` and a missing-cache-addon warning to help testers confirm whether `coolstats_Cache` is loaded and whether snapshots are being stored.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.26-rg2`.
+
+## 0.2.26-rg1 - 2026-07-11
+
+### Core sync
+
+- Ported the upstream 0.2.26 achievement-comparison fallback hardening so first-hover raid progress checks can load Blizzard_AchievementUI safely before comparing another player.
+- Added Lua 5.1 validation to the Rising Gods package flow so Wrath-client syntax/chunk issues block release packaging.
+
+### Rising Gods data
+
+- Refreshed the Rising-Gods ICC profile while keeping the package ranked-player-only.
+- Kept boss leaderboards restricted to enriching current ranked players; rankless boss-only rows remain excluded.
+
+### Distribution
+
+- Bumped all Rising Gods TOC metadata to `0.2.26-rg1`.
+- Kept release packaging isolated to `coolstats`, `coolstats_Cache`, and `coolstats_Data_RisingGods`.
+
+## 0.2.23-rg2 - 2026-07-08
+
+### Rising Gods
+
+- Rebuilt the Rising Gods release as a ranked-player-only package.
+- Stopped bulk boss leaderboards from creating rankless boss-only player records.
+- Disabled previous-player preservation for the Rising Gods ICC profile so old bloated JSON cannot re-expand the generated addon data.
+- Added tests that reject rankless generated player rows and enforce the Rising-Gods-only data policy.
+
+### Distribution
+
+- Prepared the release for a clean GitHub repository owned and authored only by `coolstats`.
+- Bumped all Rising Gods TOC metadata to `0.2.23-rg2`.
+
+## 0.2.23-rg1 - 2026-07-06
+
+### Rising Gods
+
+- Created a sterile Rising Gods edition based on upstream coolstats 0.2.23.
+- Added load-on-demand UwU Logs data for the `Rising-Gods` ICC realm.
+- Added the ICC-era boss roster: ICC 25 heroic, Toravon, Halion, and Anub'arak.
+- Kept every player's boss parses separated by specialization.
+- Added fail-closed updater checks for ranking failures, missing encounters, and unexpectedly small datasets.
+
+### Distribution
+
+- Added Rising-Gods-only update, package, validation, and release-preparation scripts.
+- Release validation rejects Warmane realm-data folders.
+- Disabled Warmane Armory links on Rising Gods.

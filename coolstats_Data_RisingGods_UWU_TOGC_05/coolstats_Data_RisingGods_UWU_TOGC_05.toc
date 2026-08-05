@@ -1,0 +1,17 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Trial of the Grand Crusader 05
+## Notes: Optional Trial of the Grand Crusader UwU Logs layer 5/6 for Rising-Gods.
+## Author: coolstats
+## Version: 0.2.39-rg2
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats, coolstats_Data_RisingGods
+## X-coolstats-Realm: Rising-Gods
+## X-coolstats-Phase: icc
+## X-coolstats-BaseAddon: coolstats_Data_RisingGods
+## X-coolstats-RaidLayer: togc
+## X-coolstats-RaidName: Trial of the Grand Crusader
+## X-coolstats-ShardIndex: 5
+## X-coolstats-ShardCount: 6
+
+data\logs\icc\coolstats_uwu_data_togc_05.lua

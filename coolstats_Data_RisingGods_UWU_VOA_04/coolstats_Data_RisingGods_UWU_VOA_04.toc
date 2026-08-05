@@ -1,0 +1,17 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Vault of Archavon 04
+## Notes: Optional Vault of Archavon UwU Logs layer 4/6 for Rising-Gods.
+## Author: coolstats
+## Version: 0.2.39-rg2
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats, coolstats_Data_RisingGods
+## X-coolstats-Realm: Rising-Gods
+## X-coolstats-Phase: icc
+## X-coolstats-BaseAddon: coolstats_Data_RisingGods
+## X-coolstats-RaidLayer: voa
+## X-coolstats-RaidName: Vault of Archavon
+## X-coolstats-ShardIndex: 4
+## X-coolstats-ShardCount: 6
+
+data\logs\icc\coolstats_uwu_data_voa_04.lua

@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Rising-Gods UWU 03
+## Notes: Realm-specific UwU Logs shard 3/6 for Rising-Gods.
+## Author: coolstats
+## Version: 0.2.39-rg2
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats, coolstats_Data_RisingGods
+## X-coolstats-Realm: Rising-Gods
+## X-coolstats-Phase: icc
+## X-coolstats-BaseAddon: coolstats_Data_RisingGods
+## X-coolstats-ShardIndex: 3
+## X-coolstats-ShardCount: 6
+
+data\logs\icc\coolstats_uwu_data_03.lua

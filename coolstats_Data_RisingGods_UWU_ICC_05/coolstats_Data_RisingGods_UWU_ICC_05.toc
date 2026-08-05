@@ -1,0 +1,17 @@
+## Interface: 30300
+## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Icecrown Citadel 05
+## Notes: Optional Icecrown Citadel UwU Logs layer 5/6 for Rising-Gods.
+## Author: coolstats
+## Version: 0.2.39-rg2
+## DefaultState: Enabled
+## LoadOnDemand: 1
+## RequiredDeps: coolstats, coolstats_Data_RisingGods
+## X-coolstats-Realm: Rising-Gods
+## X-coolstats-Phase: icc
+## X-coolstats-BaseAddon: coolstats_Data_RisingGods
+## X-coolstats-RaidLayer: icc
+## X-coolstats-RaidName: Icecrown Citadel
+## X-coolstats-ShardIndex: 5
+## X-coolstats-ShardCount: 6
+
+data\logs\icc\coolstats_uwu_data_icc_05.lua
