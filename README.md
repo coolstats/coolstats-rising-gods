@@ -83,7 +83,7 @@ are intentionally separate.
 - Compact `[coolstats: Player]` chat links let users with a compatible addon
   version open the linked player's logs directly.
 - Individual player log panels include quick buttons for chat-linking logs and
-  opening the player's Warmane Armory URL.
+  opening the player's Rising Gods profile URL.
 - Raid-progress fallback checks can show achievement/statistic progress when
   verified logs are missing on realms where the underlying client data is
   reliable.

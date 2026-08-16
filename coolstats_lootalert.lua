@@ -22,6 +22,7 @@ local QUALITY_HEIRLOOM = 7
 local ROLL_NEED = 1
 local ROLL_GREED = 2
 local ROLL_DISENCHANT = 3
+local ROLL_EXPECTATION_SECONDS = 60
 
 local LOOT_BORDER_BY_QUALITY = {
 	[QUALITY_UNCOMMON] = {0.34082, 0.397461, 0.53125, 0.644531},
@@ -38,6 +39,7 @@ local rollExpectations = {}
 local recentRollWins = {}
 local sanitizeCache = {}
 local captureCache = {}
+local StartLootAlertTicker
 
 local function SetVisible(frame, shown)
 	if not frame then
@@ -165,6 +167,9 @@ local function AddAlert(name, link, quality, texture, count, label, toast, rollT
 		rollType = rollType,
 		rollLink = rollLink,
 	}
+	if StartLootAlertTicker then
+		StartLootAlertTicker()
+	end
 	return true
 end
 
@@ -202,7 +207,19 @@ local function ExpireRollWins()
 	end
 end
 
+local function PruneRollState()
+	local now = GetTime and GetTime() or 0
+	for link, entry in pairs(rollExpectations) do
+		local expiresAt = type(entry) == "table" and tonumber(entry[3]) or 0
+		if expiresAt <= now then
+			rollExpectations[link] = nil
+		end
+	end
+	ExpireRollWins()
+end
+
 local function HandleRollMessage(message)
+	PruneRollState()
 	local playerName = UnitName("player")
 	if not playerName then
 		return nil
@@ -225,7 +242,7 @@ local function HandleRollMessage(message)
 	for rollType, pattern in pairs(rolledPatterns) do
 		local roll, link, player = CMatch(message, pattern)
 		if roll and link and player == playerName then
-			rollExpectations[link] = { rollType, roll }
+			rollExpectations[link] = { rollType, roll, (GetTime and GetTime() or 0) + ROLL_EXPECTATION_SECONDS }
 			return nil
 		end
 	end
@@ -270,7 +287,7 @@ local function GetProfessionLoot(message)
 end
 
 local function AlertSelfLoot(link, count, label)
-	ExpireRollWins()
+	PruneRollState()
 	if recentRollWins[link] then
 		return
 	end
@@ -299,6 +316,7 @@ end
 
 function CoolstatsLootAlertFrame_OnLoad(self)
 	self.updateTime = LOOT_ALERT_UPDATE_TIME
+	self:SetScript("OnUpdate", nil)
 	self:RegisterEvent("CHAT_MSG_LOOT")
 end
 
@@ -316,6 +334,7 @@ function CoolstatsLootAlertFrame_OnEvent(self, event, ...)
 	if not message then
 		return
 	end
+	PruneRollState()
 
 	if options.professions then
 		local craftedLink, craftedCount = GetProfessionLoot(message)
@@ -364,6 +383,17 @@ function CoolstatsLootAlertFrame_OnUpdate(self, elapsed)
 		end
 	end
 	self.updateTime = LOOT_ALERT_UPDATE_TIME
+	if #alertQueue == 0 then
+		self:SetScript("OnUpdate", nil)
+	end
+end
+
+StartLootAlertTicker = function()
+	local frame = _G.CoolstatsLootAlertFrame
+	if frame and CoolstatsLootAlertFrame_OnUpdate then
+		frame.updateTime = 0
+		frame:SetScript("OnUpdate", CoolstatsLootAlertFrame_OnUpdate)
+	end
 end
 
 function CoolstatsLootAlertButtonTemplate_OnLoad(self)
