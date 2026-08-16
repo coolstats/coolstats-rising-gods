@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods UWU 04
 ## Notes: Realm-specific UwU Logs shard 4/6 for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.39-rg2
+## Version: 0.2.42-rg1
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats, coolstats_Data_RisingGods

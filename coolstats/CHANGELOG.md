@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.42-rg1 - 2026-08-16
+
+### Warmane 0.2.40-0.2.42 parity
+
+- Ported the latest shared runtime changes from Warmane, including first-run
+  guide skipping, item rarity color mode for item-level overlays, upper-corner
+  item-level badge positions, Character Panel settings reorganization, and the
+  latest browser refresh/cache reuse improvements.
+- Kept Rising Gods-specific profile links pointed at
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<name>`.
+
+### Rising Gods data
+
+- Refreshed the Rising Gods ICC UwU Logs dataset with 10,247 players written
+  across 6 ranked-player chunks.
+- Preserved the Rising Gods data addon family rooted at
+  `coolstats_Data_RisingGods`, including player shards and ICC/VOA/RS/TOGC raid
+  layer shards.
+
+### Public updaters
+
+- Revalidated both public log updaters, `Update_Rising_Gods_Logs.bat` and
+  `Update_Rising_Gods_Logs.sh`, so users can refresh the full Rising Gods data
+  addon family themselves from an installed release.
+
 ## 0.2.39-rg2 - 2026-08-05
 
 ### Distribution

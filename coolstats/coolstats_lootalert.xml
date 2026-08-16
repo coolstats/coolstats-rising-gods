@@ -354,7 +354,6 @@
 		<Scripts>
 			<OnLoad function="CoolstatsLootAlertFrame_OnLoad"/>
 			<OnEvent function="CoolstatsLootAlertFrame_OnEvent"/>
-			<OnUpdate function="CoolstatsLootAlertFrame_OnUpdate"/>
 		</Scripts>
 	</Frame>
 
@@ -362,11 +361,6 @@
 	<Button name="CoolstatsLootAlertButton2" inherits="CoolstatsLootAlertButtonTemplate" id="2"/>
 	<Button name="CoolstatsLootAlertButton3" inherits="CoolstatsLootAlertButtonTemplate" id="3"/>
 	<Button name="CoolstatsLootAlertButton4" inherits="CoolstatsLootAlertButtonTemplate" id="4"/>
-
-	<Button name="CoolstatsLootAlertButton5" inherits="CoolstatsLootAlertButtonTemplate" id="5"/>
-	<Button name="CoolstatsLootAlertButton6" inherits="CoolstatsLootAlertButtonTemplate" id="6"/>
-	<Button name="CoolstatsLootAlertButton7" inherits="CoolstatsLootAlertButtonTemplate" id="7"/>
-	<Button name="CoolstatsLootAlertButton8" inherits="CoolstatsLootAlertButtonTemplate" id="8"/>
 </Ui>
 
 

@@ -65,6 +65,7 @@ local defaults = {
 	itemLevelBadges = {
 		position = "default",
 		fontSize = 15,
+		colorMode = "score",
 	},
 	lootAlerts = {
 		enabled = true,
@@ -130,6 +131,8 @@ local SOLID_BACKGROUND_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 coolstats.ITEM_LEVEL_BADGE_DEFAULT_FONT_SIZE = 15
 coolstats.ITEM_LEVEL_BADGE_POSITIONS = {
 	{ key = "default", label = "Default" },
+	{ key = "upperLeft", label = "Upper left" },
+	{ key = "upperRight", label = "Upper right" },
 	{ key = "lowerLeft", label = "Lower left" },
 	{ key = "lowerRight", label = "Lower right" },
 	{ key = "off", label = "Off" },
@@ -339,6 +342,143 @@ local function Print(message)
 	end
 end
 
+function coolstats.ProfileNow()
+	if debugprofilestop then
+		return debugprofilestop()
+	end
+	if GetTime then
+		return GetTime() * 1000
+	end
+	return 0
+end
+
+function coolstats.ProfileBegin(key)
+	if not coolstats.profileEnabled or not key then
+		return nil
+	end
+	return coolstats.ProfileNow()
+end
+
+function coolstats.ProfileEnd(key, startedAt)
+	if not key or not startedAt then
+		return
+	end
+	local elapsed = coolstats.ProfileNow() - startedAt
+	local stats = coolstats.profileStats
+	if type(stats) ~= "table" then
+		stats = {}
+		coolstats.profileStats = stats
+	end
+	local row = stats[key]
+	if type(row) ~= "table" then
+		row = { calls = 0, total = 0, max = 0 }
+		stats[key] = row
+	end
+	row.calls = (row.calls or 0) + 1
+	row.total = (row.total or 0) + elapsed
+	if elapsed > (row.max or 0) then
+		row.max = elapsed
+	end
+end
+
+function coolstats.ProfileCount(key, amount)
+	if not coolstats.profileEnabled or not key then
+		return
+	end
+	local stats = coolstats.profileStats
+	if type(stats) ~= "table" then
+		stats = {}
+		coolstats.profileStats = stats
+	end
+	local row = stats[key]
+	if type(row) ~= "table" then
+		row = { calls = 0, total = 0, max = 0 }
+		stats[key] = row
+	end
+	row.calls = (row.calls or 0) + (amount or 1)
+end
+
+function coolstats.ResetProfileStats()
+	coolstats.profileStats = {}
+end
+
+function coolstats.PrintProfileSnapshot(label)
+	local prefix = "|cff00bfffcoolstats profile:|r "
+	Print(prefix .. tostring(label and label ~= "" and label or (coolstats.profileEnabled and "snapshot" or "off")))
+	if not coolstats.profileEnabled then
+		Print(prefix .. "Use /cs profile on to start collecting counters.")
+	end
+	local rows = {}
+	for key, row in pairs(coolstats.profileStats or {}) do
+		rows[#rows + 1] = {
+			key = key,
+			calls = tonumber(row.calls) or 0,
+			total = tonumber(row.total) or 0,
+			max = tonumber(row.max) or 0,
+		}
+	end
+	table.sort(rows, function(left, right)
+		if left.total == right.total then
+			return left.calls > right.calls
+		end
+		return left.total > right.total
+	end)
+	if #rows == 0 then
+		Print(prefix .. "No samples yet.")
+		return
+	end
+	local printed = {}
+	for index = 1, math.min(#rows, 12) do
+		local row = rows[index]
+		local average = row.calls > 0 and row.total / row.calls or 0
+		printed[row.key] = true
+		Print(prefix .. row.key .. " calls " .. tostring(row.calls) .. ", total " .. format("%.1fms", row.total) .. ", avg " .. format("%.2fms", average) .. ", max " .. format("%.1fms", row.max))
+	end
+	local counterKeys = {
+		"browser.queryCacheHit",
+		"browser.queryCacheHitAfterIndex",
+		"browser.refreshCacheReuse",
+		"browser.buildIndexReused",
+		"browser.buildIndexMissNoIndex",
+		"browser.buildIndexMissData",
+		"browser.buildIndexMissGearStore",
+		"browser.buildIndexMissTalentStore",
+		"browser.indexReleased",
+		"browser.indexReleasedClose",
+		"browser.indexReleasedForce",
+		"browser.indexReleaseHeldByStats",
+		"browser.minimapToggleDebounced",
+		"browser.sortedOrderCacheHit",
+		"browser.sortedOrderCacheMiss",
+		"browser.rowDisplayCacheHit",
+		"browser.paintRowsSkipped",
+		"browser.indexPatchedGear",
+		"browser.indexPatchedTalents",
+		"browser.indexInvalidated",
+		"browser.indexInvalidated.pruneGear",
+		"browser.indexInvalidated.pruneTalents",
+		"browser.indexInvalidated.gearSaveRemovedOther",
+		"browser.indexInvalidated.gearPatchMiss",
+		"browser.indexInvalidated.talentSaveRemovedOther",
+		"browser.indexInvalidated.talentPatchMiss",
+		"browser.indexInvalidated.options",
+		"browser.indexInvalidated.clearGearTalents",
+		"browser.indexInvalidated.startupCache",
+		"browser.indexInvalidated.staleTalentLookup",
+		"browser.patchGearNoIndex",
+		"browser.patchTalentNoIndex",
+	}
+	for counterIndex = 1, #counterKeys do
+		local key = counterKeys[counterIndex]
+		local stat = (coolstats.profileStats or {})[key]
+		if stat and (tonumber(stat.calls) or 0) > 0 then
+			if not printed[key] then
+				Print(prefix .. key .. " count " .. tostring(tonumber(stat.calls) or 0))
+			end
+		end
+	end
+end
+
 local function CopyDefaults(target, source)
 	if type(target) ~= "table" then
 		target = {}
@@ -392,6 +532,9 @@ local function EnsureEditOptions()
 		db.itemLevelBadges.position = defaults.itemLevelBadges.position
 	end
 	db.itemLevelBadges.fontSize = max(0, min(30, tonumber(db.itemLevelBadges.fontSize) or defaults.itemLevelBadges.fontSize))
+	if db.itemLevelBadges.colorMode ~= "quality" then
+		db.itemLevelBadges.colorMode = defaults.itemLevelBadges.colorMode
+	end
 	if type(db.lootAlerts) ~= "table" then
 		db.lootAlerts = CopyDefaults({}, defaults.lootAlerts)
 	else
@@ -568,6 +711,14 @@ end
 function coolstats.GetItemLevelBadgeOptions()
 	EnsureEditOptions()
 	return db and db.itemLevelBadges or defaults.itemLevelBadges
+end
+
+function coolstats.GetItemLevelBadgeColorMode()
+	local options = coolstats.GetItemLevelBadgeOptions()
+	if options and options.colorMode == "quality" then
+		return "quality"
+	end
+	return "score"
 end
 
 function coolstats.GetItemLevelBadgePositions()
@@ -871,7 +1022,7 @@ function coolstats.GetUpdateCenterStatusMessage()
 end
 
 function coolstats.PrintUpdateLinks()
-	Print("Repository: " .. coolstats.UPDATE_CENTER_WARPERIA_URL)
+	Print("Warperia: " .. coolstats.UPDATE_CENTER_WARPERIA_URL)
 	Print("GitHub: " .. coolstats.UPDATE_CENTER_GITHUB_URL)
 end
 
@@ -898,7 +1049,7 @@ function coolstats.RemindUpdateCenter(message)
 		state.lastReminderAt = now
 	end
 	Print("|cffff4040" .. tostring(message) .. "|r")
-	Print("Run |cff00c0ff/cs update|r for Repository and GitHub links.")
+	Print("Run |cff00c0ff/cs update|r for Warperia and GitHub links.")
 end
 
 function coolstats.RecordUpdateCenterRequestPeer(sender, channel, version, generatedAt, ageDays, requestId)
@@ -1131,6 +1282,14 @@ function coolstats.OpenSettingsFromMinimap()
 end
 
 function coolstats.OpenCachedPlayerBrowserFromMinimap()
+	local now = GetTime and GetTime() or time()
+	if coolstats.lastMinimapBrowserToggleAt and now and now - coolstats.lastMinimapBrowserToggleAt < 0.35 then
+		if coolstats.ProfileCount then
+			coolstats.ProfileCount("browser.minimapToggleDebounced")
+		end
+		return
+	end
+	coolstats.lastMinimapBrowserToggleAt = now
 	if CloseDropDownMenus then
 		CloseDropDownMenus()
 	end
@@ -1412,6 +1571,34 @@ local function GetScoreColor(score)
 	end
 
 	return 0.94, 0.47, 0.00, "Legendary"
+end
+
+function coolstats.GetItemQualityRGB(quality)
+	quality = tonumber(quality)
+	if not quality then
+		return nil
+	end
+	if GetItemQualityColor then
+		local red, green, blue = GetItemQualityColor(quality)
+		if red and green and blue then
+			return red, green, blue
+		end
+	end
+	local color = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+	if color and color.r and color.g and color.b then
+		return color.r, color.g, color.b
+	end
+	return nil
+end
+
+function coolstats.GetItemDisplayColor(scoreRed, scoreGreen, scoreBlue, quality)
+	if coolstats.GetItemLevelBadgeColorMode() == "quality" then
+		local qualityRed, qualityGreen, qualityBlue = coolstats.GetItemQualityRGB(quality)
+		if qualityRed and qualityGreen and qualityBlue then
+			return qualityRed, qualityGreen, qualityBlue
+		end
+	end
+	return scoreRed or 0.55, scoreGreen or 0.55, scoreBlue or 0.55
 end
 
 local function FormatNumber(value)
@@ -1703,10 +1890,11 @@ local function GetItemScore(itemLink)
 	if not itemName or not itemRarity or not itemLevel or not itemEquipLoc then
 		return nil
 	end
+	local itemQuality = itemRarity
 
 	local weight = slotWeights[itemEquipLoc]
 	if not weight then
-		return nil, itemLevel, nil, 1, 1, 1, itemEquipLoc
+		return nil, itemLevel, nil, 1, 1, 1, itemEquipLoc, itemQuality
 	end
 
 	local qualityScale = 1
@@ -1728,7 +1916,7 @@ local function GetItemScore(itemLink)
 	local formulaTable = itemLevel > 120 and highItemFormula or lowItemFormula
 	local formulaData = formulaTable[itemRarity]
 	if not formulaData or itemRarity < 2 or itemRarity > 4 then
-		return nil, displayItemLevel, weight.itemSlot, 1, 1, 1, itemEquipLoc
+		return nil, displayItemLevel, weight.itemSlot, 1, 1, 1, itemEquipLoc, itemQuality
 	end
 
 	local scale = 1.8618
@@ -1743,7 +1931,7 @@ local function GetItemScore(itemLink)
 	end
 
 	gearScore = floor(gearScore * GetEnchantMultiplier(itemLink, itemEquipLoc))
-	return gearScore, displayItemLevel, weight.itemSlot, red, green, blue, itemEquipLoc
+	return gearScore, displayItemLevel, weight.itemSlot, red, green, blue, itemEquipLoc, itemQuality
 end
 
 coolstats.GetItemScore = GetItemScore
@@ -1755,8 +1943,9 @@ local function GetSlotItem(unit, slot)
 		return nil
 	end
 
-	local score, itemLevel, itemSlot, red, green, blue, equipLoc = GetItemScore(link)
+	local score, itemLevel, itemSlot, red, green, blue, equipLoc, quality = GetItemScore(link)
 	if itemLevel then
+		red, green, blue = coolstats.GetItemDisplayColor(red, green, blue, quality)
 		return {
 			link = link,
 			score = score,
@@ -1766,6 +1955,7 @@ local function GetSlotItem(unit, slot)
 			green = green or 0.55,
 			blue = blue or 0.55,
 			equipLoc = equipLoc,
+			quality = quality,
 		}
 	end
 	return nil
@@ -5838,7 +6028,7 @@ end
 function coolstats.GetItemLevelBadgeFontSize(position)
 	local options = coolstats.GetItemLevelBadgeOptions()
 	local fontSize = max(0, min(30, tonumber(options.fontSize) or coolstats.ITEM_LEVEL_BADGE_DEFAULT_FONT_SIZE))
-	if position == "lowerLeft" or position == "lowerRight" then
+	if position == "upperLeft" or position == "upperRight" or position == "lowerLeft" or position == "lowerRight" then
 		fontSize = floor((fontSize * 0.5) + 0.5)
 	end
 	return fontSize
@@ -5857,7 +6047,19 @@ function coolstats.ApplyItemLevelBadgeAppearance(badge)
 	badge.text:SetFont("Fonts\\FRIZQT__.TTF", max(1, fontSize), "OUTLINE")
 	badge.text:SetHeight(14)
 
-	if position == "lowerLeft" and button then
+	if position == "upperLeft" and button then
+		SetSize(badge, 28, 14)
+		badge:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+		badge.text:SetPoint("LEFT", badge, "LEFT", 0, 0)
+		badge.text:SetWidth(28)
+		badge.text:SetJustifyH("LEFT")
+	elseif position == "upperRight" and button then
+		SetSize(badge, 28, 14)
+		badge:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
+		badge.text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
+		badge.text:SetWidth(28)
+		badge.text:SetJustifyH("RIGHT")
+	elseif position == "lowerLeft" and button then
 		SetSize(badge, 28, 14)
 		badge:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 2, 2)
 		badge.text:SetPoint("LEFT", badge, "LEFT", 0, 0)
@@ -6072,6 +6274,26 @@ local function PaperDollIsVisible()
 	return CharacterFrame and CharacterFrame:IsShown() and (not PaperDollFrame or PaperDollFrame:IsShown())
 end
 
+function coolstats.CharacterStatsPanelIsVisible()
+	return ui.panel and ui.panel:IsShown()
+end
+
+function coolstats.HasActiveStatPopouts()
+	if db and type(db.statPopouts) == "table" then
+		for _, settings in pairs(db.statPopouts) do
+			if type(settings) == "table" and settings.shown then
+				return true
+			end
+		end
+	end
+	for _, frame in pairs(ui.statPopouts) do
+		if frame and frame:IsShown() then
+			return true
+		end
+	end
+	return false
+end
+
 local function UpdateToggleButton()
 	if not ui.toggleButton then
 		return
@@ -6167,6 +6389,7 @@ local function UpdatePanel()
 		return
 	end
 
+	local profileStart = coolstats.ProfileBegin("character.updatePanel")
 	coolstats.LayoutSections()
 	local palette = coolstats.ApplyStatsTextPalette()
 
@@ -6182,12 +6405,14 @@ local function UpdatePanel()
 			SetFontStringColor(row.value, palette.value)
 		end
 	end
+	coolstats.ProfileEnd("character.updatePanel", profileStart)
 end
 
 function UpdateStatPopouts()
 	if not db then
 		return
 	end
+	local profileStart = coolstats.ProfileBegin("character.updatePopouts")
 	EnsureEditOptions()
 
 	for key, settings in pairs(db.statPopouts) do
@@ -6209,6 +6434,7 @@ function UpdateStatPopouts()
 	for index = 1, #ui.rows do
 		coolstats.UpdateStatPopoutButton(ui.rows[index])
 	end
+	coolstats.ProfileEnd("character.updatePopouts", profileStart)
 end
 
 local function UpdateAll()
@@ -6242,6 +6468,9 @@ end
 local function UpdateAllImmediate()
 	updatePending = false
 	updateElapsed = 0
+	if coolstats.characterPanelEventFrame then
+		coolstats.characterPanelEventFrame:SetScript("OnUpdate", nil)
+	end
 	coolstats.characterPanelDirty = nil
 	UpdateAll()
 end
@@ -6275,8 +6504,10 @@ function coolstats.RunCharacterPanelUpdateCategories(dirty)
 		HideCharacterPanelRuntime()
 		return
 	end
+	local profileStart = coolstats.ProfileBegin("character.runDirty")
 	if not dirty or dirty.all then
 		UpdateAll()
+		coolstats.ProfileEnd("character.runDirty", profileStart)
 		return
 	end
 
@@ -6298,8 +6529,12 @@ function coolstats.RunCharacterPanelUpdateCategories(dirty)
 	end
 
 	if dirty.stats or dirty.layout then
-		UpdatePanel()
-		UpdateStatPopouts()
+		if coolstats.CharacterStatsPanelIsVisible() then
+			UpdatePanel()
+		end
+		if coolstats.HasActiveStatPopouts() then
+			UpdateStatPopouts()
+		end
 	end
 
 	if dirty.gear or dirty.layout then
@@ -6307,6 +6542,31 @@ function coolstats.RunCharacterPanelUpdateCategories(dirty)
 		UpdateModelScores()
 		UpdateInspectSummary()
 	end
+	coolstats.ProfileEnd("character.runDirty", profileStart)
+end
+
+function coolstats.CharacterPanelUpdate_OnUpdate(self, elapsed)
+	if not updatePending then
+		self:SetScript("OnUpdate", nil)
+		return
+	end
+	if db and not coolstats.IsCharacterPanelEnabled() then
+		updatePending = false
+		updateElapsed = 0
+		self:SetScript("OnUpdate", nil)
+		return
+	end
+	updateElapsed = updateElapsed + elapsed
+	if updateElapsed < coolstats.UPDATE_DELAY_SECONDS then
+		return
+	end
+
+	updatePending = false
+	updateElapsed = 0
+	self:SetScript("OnUpdate", nil)
+	local dirty = coolstats.characterPanelDirty
+	coolstats.characterPanelDirty = nil
+	coolstats.RunCharacterPanelUpdateCategories(dirty)
 end
 
 function QueueUpdate(category)
@@ -6314,14 +6574,21 @@ function QueueUpdate(category)
 		updatePending = false
 		updateElapsed = 0
 		coolstats.characterPanelDirty = nil
+		if coolstats.characterPanelEventFrame then
+			coolstats.characterPanelEventFrame:SetScript("OnUpdate", nil)
+		end
 		HideCharacterPanelRuntime()
 		return
 	end
+	coolstats.ProfileCount("character.queueUpdate")
 	if not updatePending then
 		updateElapsed = 0
 	end
 	coolstats.MarkCharacterPanelDirty(category)
 	updatePending = true
+	if coolstats.characterPanelEventFrame then
+		coolstats.characterPanelEventFrame:SetScript("OnUpdate", coolstats.CharacterPanelUpdate_OnUpdate)
+	end
 end
 
 local function HideFontString(fontString)
@@ -6467,8 +6734,10 @@ local function ShowHelp()
 	Print("/coolstats update - open update links and data status")
 	Print("/coolstats changelog - show recent coolstats changes")
 	Print("/coolstats guide - replay the browser feature guide")
+	Print("/coolstats guide skip - skip the first-run feature guide")
 	Print("/coolstats versioncheck - ask your raid or party for coolstats versions")
 	Print("/coolstats perf - print a lightweight performance snapshot")
+	Print("/coolstats profile [on|off|reset] - time hot paths while testing")
 	Print("/coolstats uwu [player name] - open UwU Logs for a player")
 end
 
@@ -6580,7 +6849,17 @@ local function SlashHandler(message)
 			Print("Changelog is not available.")
 		end
 	elseif commandLower == "guide" or commandLower == "tutorial" then
-		if coolstats.OpenFeatureGuide then
+		local restLower = lower(rest or "")
+		if restLower == "skip" or restLower == "complete" or restLower == "off" then
+			if coolstats.SkipFeatureGuide then
+				coolstats.SkipFeatureGuide()
+			else
+				coolstatsDB = coolstatsDB or {}
+				coolstatsDB.guide = coolstatsDB.guide or {}
+				coolstatsDB.guide.browserVersion = coolstats.FEATURE_GUIDE_VERSION or 999
+				Print("Feature guide skipped.")
+			end
+		elseif coolstats.OpenFeatureGuide then
 			coolstats.OpenFeatureGuide(true)
 		else
 			Print("Feature guide is not available.")
@@ -6589,6 +6868,21 @@ local function SlashHandler(message)
 		coolstats.RequestUpdateCenterVersions(rest)
 	elseif commandLower == "perf" or commandLower == "performance" then
 		coolstats.PrintPerformanceSnapshot(rest)
+	elseif commandLower == "profile" then
+		local restLower = lower(rest or "")
+		if restLower == "on" or restLower == "start" then
+			coolstats.profileEnabled = true
+			coolstats.ResetProfileStats()
+			Print("Profile counters enabled.")
+		elseif restLower == "off" or restLower == "stop" then
+			coolstats.profileEnabled = false
+			coolstats.PrintProfileSnapshot("stopped")
+		elseif restLower == "reset" or restLower == "clear" then
+			coolstats.ResetProfileStats()
+			Print("Profile counters reset.")
+		else
+			coolstats.PrintProfileSnapshot(rest)
+		end
 	elseif commandLower == "uwu" then
 		local name = rest
 		if not name or name == "" then
@@ -6609,9 +6903,9 @@ local function SlashHandler(message)
 	end
 end
 
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:SetScript("OnEvent", function(self, event, arg1)
+coolstats.characterPanelEventFrame = CreateFrame("Frame")
+coolstats.characterPanelEventFrame:RegisterEvent("ADDON_LOADED")
+coolstats.characterPanelEventFrame:SetScript("OnEvent", function(self, event, arg1)
 	if event == "ADDON_LOADED" then
 		if arg1 == "Gear Score" then
 			gearScoreTamed = false
@@ -6744,23 +7038,3 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 	end
 end)
 
-eventFrame:SetScript("OnUpdate", function(_, elapsed)
-	if not updatePending then
-		return
-	end
-	if db and not coolstats.IsCharacterPanelEnabled() then
-		updatePending = false
-		updateElapsed = 0
-		return
-	end
-	updateElapsed = updateElapsed + elapsed
-	if updateElapsed < coolstats.UPDATE_DELAY_SECONDS then
-		return
-	end
-
-	updatePending = false
-	updateElapsed = 0
-	local dirty = coolstats.characterPanelDirty
-	coolstats.characterPanelDirty = nil
-	coolstats.RunCharacterPanelUpdateCategories(dirty)
-end)
