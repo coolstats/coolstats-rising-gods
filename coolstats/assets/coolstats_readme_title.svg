@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="92" viewBox="0 0 520 92" role="img" aria-label="coolstats">
+  <defs>
+    <filter id="glow" x="-30%" y="-60%" width="160%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <text x="260" y="64" fill="#00c0ff" filter="url(#glow)" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="700" text-anchor="middle">coolstats</text>
+</svg>
