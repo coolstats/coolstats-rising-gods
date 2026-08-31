@@ -22,9 +22,10 @@ coolstats.UPDATE_CENTER_REQUEST_SECONDS = 8
 coolstats.UPDATE_CENTER_REQUEST_RESULTS_SECONDS = 3
 
 local db
-local ui = { rows = {}, rowByKey = {}, sections = {}, badges = { player = {}, inspect = {} }, modelScores = {}, appearanceToggles = {}, statPopouts = {} }
+local ui = { rows = {}, rowByKey = {}, sections = {}, badges = { player = {}, inspect = {} }, paperDollGems = { player = {}, inspect = {} }, modelScores = {}, appearanceToggles = {}, statPopouts = {} }
 local nativeStatFrames = {}
 local repairTooltip
+local paperDollSocketTooltip
 local defaultStatsHooked = false
 local updatePending = false
 local updateElapsed = 0
@@ -40,6 +41,10 @@ local defaults = {
 	showStatsPanel = true,
 	showItemLevels = true,
 	showSlotBorders = true,
+	showPaperDollGems = true,
+	showInspectPaperDollGems = true,
+	hidePaperDollResistances = true,
+	hidePaperDollRotateButtons = true,
 	cleanGearScoreTooltips = true,
 	tooltip = {
 		guildRank = true,
@@ -66,6 +71,20 @@ local defaults = {
 		position = "default",
 		fontSize = 15,
 		colorMode = "score",
+	},
+	paperDollGems = {
+		size = 14,
+		iconScale = 1.0,
+		spacing = 7,
+		circleScale = 1.0,
+		prongScale = 0.82,
+	},
+	modelScore = {
+		x = 120,
+		y = 30,
+	},
+	paperDollModel = {
+		rotation = 0,
 	},
 	lootAlerts = {
 		enabled = true,
@@ -267,6 +286,136 @@ local inspectSlotButtons = {
 	{ slot = 16, button = "InspectMainHandSlot" },
 	{ slot = 17, button = "InspectSecondaryHandSlot" },
 	{ slot = 18, button = "InspectRangedSlot" },
+}
+
+coolstats.PAPERDOLL_GEM_SIZE = 14
+coolstats.PAPERDOLL_GEM_GAP = 1
+coolstats.PAPERDOLL_GEM_OUTER_GAP = 4
+coolstats.PAPERDOLL_GEM_FRAME_SIZE = (coolstats.PAPERDOLL_GEM_SIZE * 2) + coolstats.PAPERDOLL_GEM_GAP
+coolstats.PAPERDOLL_GEM_FALLBACK_ICON = "Interface\\AddOns\\coolstats\\assets\\paperdoll\\coolstats_paperdoll_empty_socket"
+coolstats.PAPERDOLL_GEM_BACKDROP = "Interface\\AddOns\\coolstats\\assets\\paperdoll\\coolstats_paperdoll_gem_backdrop"
+coolstats.PAPERDOLL_GEM_BORDER = "Interface\\AddOns\\coolstats\\assets\\paperdoll\\coolstats_paperdoll_gem_border"
+coolstats.PAPERDOLL_GEM_SOCKET_ATLAS = "Interface\\ItemSocketingFrame\\UI-ItemSockets"
+coolstats.PAPERDOLL_GEM_TOGGLE_ITEM_ID = 36767
+coolstats.PAPERDOLL_GEM_TOGGLE_ICON = "Interface\\Icons\\INV_Jewelcrafting_Dragonseye02"
+coolstats.PAPERDOLL_RESISTANCE_FRAME_NAMES = {
+	"MagicResFrame",
+	"MagicResFrame1",
+	"MagicResFrame2",
+	"MagicResFrame3",
+	"MagicResFrame4",
+	"MagicResFrame5",
+	"ResistanceFrame",
+	"ResistanceFrame1",
+	"ResistanceFrame2",
+	"ResistanceFrame3",
+	"ResistanceFrame4",
+	"ResistanceFrame5",
+	"CharacterResistanceFrame",
+}
+coolstats.PAPERDOLL_ROTATE_BUTTON_NAMES = {
+	"CharacterModelFrameRotateLeftButton",
+	"CharacterModelFrameRotateRightButton",
+	"CharacterModelRotateLeftButton",
+	"CharacterModelRotateRightButton",
+	"CharacterFrameRotateLeftButton",
+	"CharacterFrameRotateRightButton",
+}
+coolstats.INSPECT_ROTATE_BUTTON_NAMES = {
+	"InspectModelFrameRotateLeftButton",
+	"InspectModelFrameRotateRightButton",
+	"InspectModelRotateLeftButton",
+	"InspectModelRotateRightButton",
+	"InspectFrameRotateLeftButton",
+	"InspectFrameRotateRightButton",
+}
+
+function coolstats.GetPaperDollGemOptions()
+	if db and type(db.paperDollGems) == "table" then
+		return db.paperDollGems
+	end
+	return defaults.paperDollGems
+end
+
+function coolstats.GetPaperDollGemSize()
+	return max(10, min(24, tonumber(coolstats.GetPaperDollGemOptions().size) or coolstats.PAPERDOLL_GEM_SIZE))
+end
+
+function coolstats.GetPaperDollGemIconScale()
+	return max(0.6, min(1.15, tonumber(coolstats.GetPaperDollGemOptions().iconScale) or 1))
+end
+
+function coolstats.GetPaperDollGemSpacing()
+	return max(3, min(14, tonumber(coolstats.GetPaperDollGemOptions().spacing) or 7))
+end
+
+function coolstats.GetPaperDollGemCircleScale()
+	return max(0.75, min(1.45, tonumber(coolstats.GetPaperDollGemOptions().circleScale) or 1))
+end
+
+function coolstats.GetPaperDollGemProngScale()
+	return max(0.55, min(1.25, tonumber(coolstats.GetPaperDollGemOptions().prongScale) or 0.82))
+end
+
+function coolstats.GetPaperDollGemFrameSize()
+	local size = coolstats.GetPaperDollGemSize()
+	return (size * 2) + coolstats.PAPERDOLL_GEM_GAP
+end
+
+function coolstats.GetPaperDollGemLineSize(count)
+	local size = coolstats.GetPaperDollGemSize()
+	count = max(1, min(3, tonumber(count) or 1))
+	return (size * count) + (coolstats.PAPERDOLL_GEM_GAP * (count - 1))
+end
+
+function coolstats.GetPaperDollGemShineSize()
+	return max(4, min(8, floor(coolstats.GetPaperDollGemSize() * 0.38 + 0.5)))
+end
+
+function coolstats.SetPaperDollGemDrawLayer(texture, layer, sublevel)
+	if not texture or not texture.SetDrawLayer then
+		return
+	end
+	local ok = pcall(texture.SetDrawLayer, texture, layer, sublevel)
+	if not ok then
+		pcall(texture.SetDrawLayer, texture, layer)
+	end
+end
+
+function coolstats.GetModelScoreOptions()
+	if db and type(db.modelScore) == "table" then
+		return db.modelScore
+	end
+	return defaults.modelScore
+end
+
+function coolstats.GetPaperDollModelOptions()
+	if db and type(db.paperDollModel) == "table" then
+		return db.paperDollModel
+	end
+	return defaults.paperDollModel
+end
+
+coolstats.paperDollGemAnchors = {
+	[1] = "RIGHT",
+	[2] = "RIGHT",
+	[3] = "RIGHT",
+	[15] = "RIGHT",
+	[5] = "RIGHT",
+	[4] = "RIGHT",
+	[19] = "RIGHT",
+	[9] = "RIGHT",
+	[10] = "LEFT",
+	[6] = "LEFT",
+	[7] = "LEFT",
+	[8] = "LEFT",
+	[11] = "LEFT",
+	[12] = "LEFT",
+	[13] = "LEFT",
+	[14] = "LEFT",
+	[16] = "TOP",
+	[17] = "TOP",
+	[18] = "TOP",
 }
 
 local scoreSlots = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
@@ -535,6 +684,29 @@ local function EnsureEditOptions()
 	if db.itemLevelBadges.colorMode ~= "quality" then
 		db.itemLevelBadges.colorMode = defaults.itemLevelBadges.colorMode
 	end
+	if type(db.paperDollGems) ~= "table" then
+		db.paperDollGems = CopyDefaults({}, defaults.paperDollGems)
+	else
+		db.paperDollGems = CopyDefaults(db.paperDollGems, defaults.paperDollGems)
+	end
+	db.paperDollGems.size = max(10, min(24, tonumber(db.paperDollGems.size) or defaults.paperDollGems.size))
+	db.paperDollGems.iconScale = max(0.6, min(1.15, tonumber(db.paperDollGems.iconScale) or defaults.paperDollGems.iconScale))
+	db.paperDollGems.spacing = max(3, min(14, tonumber(db.paperDollGems.spacing) or defaults.paperDollGems.spacing))
+	db.paperDollGems.circleScale = max(0.75, min(1.45, tonumber(db.paperDollGems.circleScale) or defaults.paperDollGems.circleScale))
+	db.paperDollGems.prongScale = max(0.55, min(1.25, tonumber(db.paperDollGems.prongScale) or defaults.paperDollGems.prongScale))
+	if type(db.modelScore) ~= "table" then
+		db.modelScore = CopyDefaults({}, defaults.modelScore)
+	else
+		db.modelScore = CopyDefaults(db.modelScore, defaults.modelScore)
+	end
+	db.modelScore.x = max(-160, min(160, tonumber(db.modelScore.x) or defaults.modelScore.x))
+	db.modelScore.y = max(-40, min(180, tonumber(db.modelScore.y) or defaults.modelScore.y))
+	if type(db.paperDollModel) ~= "table" then
+		db.paperDollModel = CopyDefaults({}, defaults.paperDollModel)
+	else
+		db.paperDollModel = CopyDefaults(db.paperDollModel, defaults.paperDollModel)
+	end
+	db.paperDollModel.rotation = max(0, min(360, tonumber(db.paperDollModel.rotation) or defaults.paperDollModel.rotation))
 	if type(db.lootAlerts) ~= "table" then
 		db.lootAlerts = CopyDefaults({}, defaults.lootAlerts)
 	else
@@ -1532,6 +1704,37 @@ local function GetInspectUnit()
 	return "target"
 end
 
+function coolstats.GetInspectGemUnitKey()
+	local unit = GetInspectUnit()
+	if not unit or not UnitExists(unit) then
+		return nil
+	end
+	local guid = UnitGUID and UnitGUID(unit)
+	local name = UnitName(unit)
+	return guid or name or unit
+end
+
+function coolstats.ClearInspectPaperDollGems()
+	if not ui.paperDollGems or not ui.paperDollGems.inspect then
+		return
+	end
+	for _, holder in pairs(ui.paperDollGems.inspect) do
+		coolstats.HidePaperDollGemHolder(holder)
+	end
+end
+
+function coolstats.RefreshInspectPaperDollGemsForUnitChange()
+	local shown = InspectFrame and InspectFrame:IsShown()
+	local unitKey = shown and coolstats.GetInspectGemUnitKey() or nil
+	if unitKey ~= coolstats.lastInspectGemUnitKey then
+		coolstats.lastInspectGemUnitKey = unitKey
+		coolstats.ClearInspectPaperDollGems()
+		if shown then
+			QueueUpdate("gear")
+		end
+	end
+end
+
 local function ClampColor(value)
 	if not value then
 		return 0
@@ -1959,6 +2162,358 @@ local function GetSlotItem(unit, slot)
 		}
 	end
 	return nil
+end
+
+function coolstats.GetGemIdsFromItemLink(itemLink)
+	if not GetItemGem or not itemLink then
+		return nil
+	end
+
+	local gemIds = nil
+	for index = 1, 3 do
+		local ok, _, gemLink = pcall(GetItemGem, itemLink, index)
+		local gemId = ok and gemLink and tonumber(match(gemLink, "item:(%d+)"))
+		if gemId and gemId > 0 then
+			if not gemIds then
+				gemIds = {}
+			end
+			gemIds[#gemIds + 1] = gemId
+		end
+	end
+
+	return gemIds
+end
+
+function coolstats.GetPaperDollGemData(gemLink)
+	local name, itemLink, quality, _, _, itemType, itemSubType, _, _, icon = GetItemInfo(gemLink)
+	if not itemLink then
+		itemLink = gemLink
+	end
+	if not icon and GetItemIcon then
+		icon = GetItemIcon(gemLink)
+	end
+	if not icon then
+		return nil
+	end
+	return {
+		link = itemLink,
+		name = name,
+		quality = quality,
+		itemType = itemType,
+		itemSubType = itemSubType,
+		icon = icon,
+		gemSocketType = coolstats.GetPaperDollGemSocketType(name, itemSubType),
+		socketType = coolstats.GetPaperDollGemSocketType(name, itemSubType),
+	}
+end
+
+function coolstats.GetPaperDollGemSocketType(name, itemSubType)
+	local text = lower(tostring(itemSubType or name or ""))
+	if match(text, "meta") then
+		return "META"
+	elseif match(text, "orange") then
+		return "ORANGE"
+	elseif match(text, "purple") then
+		return "PURPLE"
+	elseif match(text, "green") then
+		return "GREEN"
+	elseif match(text, "red") or match(text, "scarlet") or match(text, "cardinal") or match(text, "ruby") then
+		return "RED"
+	elseif match(text, "yellow") or match(text, "amber") or match(text, "king") or match(text, "autumn") then
+		return "YELLOW"
+	elseif match(text, "blue") or match(text, "solid") or match(text, "zircon") or match(text, "sapphire") then
+		return "BLUE"
+	elseif match(text, "prismatic") or match(text, "dragon") or match(text, "tear") or match(text, "pearl") then
+		return "PRISMATIC"
+	end
+	return "PRISMATIC"
+end
+
+function coolstats.GetPaperDollSocketTooltip()
+	if paperDollSocketTooltip then
+		return paperDollSocketTooltip
+	end
+	paperDollSocketTooltip = CreateFrame("GameTooltip", "coolstatsPaperDollSocketTooltip", UIParent, "GameTooltipTemplate")
+	paperDollSocketTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+	return paperDollSocketTooltip
+end
+
+function coolstats.GetPaperDollSocketTypeFromText(text)
+	text = lower(tostring(text or ""))
+	if not match(text, "socket") or match(text, "socket bonus") then
+		return nil
+	elseif match(text, "meta") then
+		return "META"
+	elseif match(text, "red") then
+		return "RED"
+	elseif match(text, "yellow") then
+		return "YELLOW"
+	elseif match(text, "blue") then
+		return "BLUE"
+	elseif match(text, "prismatic") then
+		return "PRISMATIC"
+	end
+	return nil
+end
+
+function coolstats.GetPaperDollSocketTypeFromTexture(texture)
+	texture = lower(tostring(texture or ""))
+	if not match(texture, "socket") then
+		return nil
+	elseif match(texture, "meta") then
+		return "META"
+	elseif match(texture, "red") then
+		return "RED"
+	elseif match(texture, "yellow") then
+		return "YELLOW"
+	elseif match(texture, "blue") then
+		return "BLUE"
+	elseif match(texture, "prismatic") or match(texture, "no_color") or match(texture, "nocolor") then
+		return "PRISMATIC"
+	end
+	return nil
+end
+
+function coolstats.GetPaperDollUngemmedItemString(itemLink)
+	local itemString = itemLink and match(itemLink, "(item:[^|%]]+)")
+	if not itemString then
+		return nil
+	end
+
+	local parts = {}
+	for value in string.gmatch(itemString, "([^:]+)") do
+		parts[#parts + 1] = value
+	end
+	if #parts < 2 then
+		return itemString
+	end
+
+	for index = 4, 7 do
+		if parts[index] then
+			parts[index] = "0"
+		end
+	end
+
+	local cleaned = parts[1]
+	for index = 2, #parts do
+		cleaned = cleaned .. ":" .. parts[index]
+	end
+	return cleaned
+end
+
+function coolstats.GetPaperDollExpectedSocketCount(itemLink)
+	local expectedCount = 0
+	if GetItemStats and itemLink then
+		local stats = GetItemStats(itemLink)
+		if stats then
+			for statName, statValue in pairs(stats) do
+				if statName and match(statName, "EMPTY_SOCKET") then
+					expectedCount = expectedCount + (tonumber(statValue) or 0)
+				end
+			end
+		end
+	end
+
+	if GetItemGem and itemLink then
+		for index = 1, 3 do
+			local ok, _, gemLink = pcall(GetItemGem, itemLink, index)
+			if ok and gemLink and index > expectedCount then
+				expectedCount = index
+			end
+		end
+	end
+
+	return expectedCount
+end
+
+function coolstats.GetPaperDollItemSocketTypes(itemLink)
+	if not itemLink then
+		return nil
+	end
+
+	local expectedCount = coolstats.GetPaperDollExpectedSocketCount(itemLink)
+	if expectedCount <= 0 then
+		return nil
+	end
+
+	local tooltip = coolstats.GetPaperDollSocketTooltip()
+	if not tooltip then
+		return nil
+	end
+
+	local function ScanSocketTooltip(link)
+		tooltip:ClearLines()
+		local ok = pcall(tooltip.SetHyperlink, tooltip, link)
+		if not ok then
+			return nil
+		end
+
+		local sockets = nil
+		local name = tooltip:GetName()
+		local lineCount = tooltip.NumLines and tooltip:NumLines() or 0
+		for index = 1, lineCount do
+			local line = _G[name .. "TextLeft" .. index]
+			local socketType = line and coolstats.GetPaperDollSocketTypeFromText(line:GetText())
+			if socketType then
+				if not sockets then
+					sockets = {}
+				end
+				sockets[#sockets + 1] = socketType
+			end
+		end
+
+		if not sockets then
+			local regions = { tooltip:GetRegions() }
+			for index = 1, #regions do
+				local region = regions[index]
+				local socketType = region and region.GetTexture and coolstats.GetPaperDollSocketTypeFromTexture(region:GetTexture())
+				if socketType then
+					if not sockets then
+						sockets = {}
+					end
+					sockets[#sockets + 1] = socketType
+				end
+			end
+		end
+		return sockets
+	end
+
+	tooltip:ClearLines()
+	local sockets = ScanSocketTooltip(coolstats.GetPaperDollUngemmedItemString(itemLink) or itemLink)
+	if not sockets then
+		sockets = ScanSocketTooltip(itemLink)
+	end
+	tooltip:Hide()
+
+	if not sockets then
+		sockets = {}
+	end
+	while #sockets > expectedCount do
+		table.remove(sockets)
+	end
+	while #sockets < expectedCount do
+		sockets[#sockets + 1] = "PRISMATIC"
+	end
+
+	return sockets
+end
+
+function coolstats.GetPaperDollGemSocketColor(socketType)
+	if socketType == "RED" then
+		return 1.00, 0.24, 0.24
+	elseif socketType == "YELLOW" then
+		return 1.00, 0.82, 0.16
+	elseif socketType == "BLUE" then
+		return 0.34, 0.56, 1.00
+	elseif socketType == "ORANGE" then
+		return 1.00, 0.48, 0.12
+	elseif socketType == "PURPLE" then
+		return 0.78, 0.36, 1.00
+	elseif socketType == "GREEN" then
+		return 0.32, 1.00, 0.42
+	end
+	return 1.00, 0.95, 0.70
+end
+
+function coolstats.GetPaperDollSocketTypeLabel(socketType)
+	if socketType == "RED" then
+		return "Red"
+	elseif socketType == "YELLOW" then
+		return "Yellow"
+	elseif socketType == "BLUE" then
+		return "Blue"
+	elseif socketType == "META" then
+		return "Meta"
+	elseif socketType == "PRISMATIC" then
+		return "Prismatic"
+	end
+	return "Socket"
+end
+
+function coolstats.DoesPaperDollGemMatchSocket(socketType, gemSocketType)
+	if not socketType or not gemSocketType then
+		return false
+	elseif gemSocketType == "PRISMATIC" then
+		return socketType ~= "META"
+	elseif socketType == "PRISMATIC" then
+		return gemSocketType ~= "META"
+	elseif socketType == "META" or gemSocketType == "META" then
+		return socketType == gemSocketType
+	elseif socketType == "RED" then
+		return gemSocketType == "RED" or gemSocketType == "ORANGE" or gemSocketType == "PURPLE"
+	elseif socketType == "YELLOW" then
+		return gemSocketType == "YELLOW" or gemSocketType == "ORANGE" or gemSocketType == "GREEN"
+	elseif socketType == "BLUE" then
+		return gemSocketType == "BLUE" or gemSocketType == "PURPLE" or gemSocketType == "GREEN"
+	end
+	return socketType == gemSocketType
+end
+
+function coolstats.GetPaperDollGemProngTexCoord(socketType)
+	if socketType == "RED" or socketType == "ORANGE" or socketType == "PURPLE" then
+		return 0.5546875, 0.7578125, 0.4765625, 0.68359375
+	elseif socketType == "BLUE" or socketType == "GREEN" then
+		return 0.5546875, 0.7578125, 0.23828125, 0.4453125
+	end
+	return 0.5546875, 0.7578125, 0, 0.20703125
+end
+
+function coolstats.GetPaperDollGemEntriesFromItemLink(itemLink)
+	if not itemLink then
+		return nil
+	end
+
+	local gems = nil
+	local socketTypes = coolstats.GetPaperDollItemSocketTypes(itemLink)
+	local socketCount = socketTypes and #socketTypes or 0
+	if socketCount == 0 and not GetItemGem then
+		return nil
+	end
+
+	for index = 1, max(3, socketCount) do
+		local gemLink = nil
+		if GetItemGem then
+			local ok, _, link = pcall(GetItemGem, itemLink, index)
+			if ok then
+				gemLink = link
+			end
+		end
+		if gemLink then
+			local gem = coolstats.GetPaperDollGemData(gemLink)
+			if gem then
+				if not gems then
+					gems = {}
+				end
+				gem.socketType = socketTypes and socketTypes[index] or gem.gemSocketType or gem.socketType
+				gem.socketIndex = index
+				gems[#gems + 1] = gem
+			end
+		elseif socketTypes and socketTypes[index] then
+			if not gems then
+				gems = {}
+			end
+			gems[#gems + 1] = {
+				socketType = socketTypes[index],
+				socketIndex = index,
+				emptySocket = true,
+			}
+		end
+	end
+
+	return gems
+end
+
+function coolstats.GetPaperDollFallbackGemData(gemId)
+	local _, gemLink, quality, _, _, _, _, _, _, icon = GetItemInfo(gemId)
+	if not gemLink then
+		gemLink = "item:" .. tostring(gemId)
+	end
+	return {
+		id = gemId,
+		link = gemLink,
+		quality = quality,
+		icon = icon or coolstats.PAPERDOLL_GEM_FALLBACK_ICON,
+	}
 end
 
 local function CalculateUnitGear(unit)
@@ -5235,6 +5790,170 @@ local function CreateToggleButton()
 	end)
 end
 
+function coolstats.PlayPaperDollGemToggleSound()
+	if PlaySoundFile then
+		local ok, played = pcall(PlaySoundFile, "Sound\\Interface\\PickUp\\PutDownGems.wav")
+		if ok and played then
+			return
+		end
+		ok, played = pcall(PlaySoundFile, "Sound\\Interface\\PickUp\\PutDownGems.ogg")
+		if ok and played then
+			return
+		end
+	end
+	if PlaySound and not pcall(PlaySound, "ITEM_DROP") then
+		PlaySound("igMainMenuOptionCheckBoxOn")
+	end
+end
+
+function coolstats.UpdatePaperDollGemToggleVisual(button, enabled)
+	if not button then
+		return
+	end
+	if button.icon then
+		local _, _, _, _, _, _, _, _, _, resolvedIcon = GetItemInfo(coolstats.PAPERDOLL_GEM_TOGGLE_ITEM_ID)
+		if resolvedIcon then
+			button.icon:SetTexture(resolvedIcon)
+		end
+		if button.icon.SetDesaturated then
+			button.icon:SetDesaturated(not enabled)
+		end
+		if enabled then
+			button.icon:SetVertexColor(1, 1, 1, 1)
+		else
+			button.icon:SetVertexColor(0.38, 0.38, 0.38, 0.75)
+		end
+	end
+	if button.border then
+		if enabled then
+			button.border:SetVertexColor(0.34, 0.56, 1.00, 1)
+		else
+			button.border:SetVertexColor(0.45, 0.45, 0.45, 0.8)
+		end
+	end
+end
+
+function coolstats.UpdatePaperDollGemToggleButton()
+	if ui.gemToggleButton then
+		local shown = CharacterFrame and CharacterFrame:IsShown() and PaperDollFrame and PaperDollFrame:IsShown()
+		SetVisible(ui.gemToggleButton, shown)
+		coolstats.UpdatePaperDollGemToggleVisual(ui.gemToggleButton, db and db.showPaperDollGems)
+	end
+	if ui.inspectGemToggleButton then
+		local shown = InspectFrame and InspectFrame:IsShown()
+		SetVisible(ui.inspectGemToggleButton, shown)
+		coolstats.UpdatePaperDollGemToggleVisual(ui.inspectGemToggleButton, db and db.showInspectPaperDollGems)
+	end
+end
+
+function coolstats.CreatePaperDollGemToggleButtonForFrame(key, parent, wristSlot, fallbackX, fallbackY, tooltipPrefix, onToggle)
+	if not parent then
+		return nil
+	end
+
+	local button = CreateFrame("Button", "coolstats" .. key .. "PaperDollGemToggleButton", parent)
+	SetSize(button, 24, 24)
+	if wristSlot then
+		button:SetPoint("TOP", wristSlot, "BOTTOM", 0, -6)
+	else
+		button:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", fallbackX or 35, fallbackY or 79)
+	end
+	button:SetFrameLevel(parent:GetFrameLevel() + 7)
+
+	local backdrop = button:CreateTexture(nil, "BACKGROUND")
+	backdrop:SetTexture(coolstats.PAPERDOLL_GEM_BACKDROP)
+	backdrop:SetPoint("TOPLEFT", button, "TOPLEFT", -4, 4)
+	backdrop:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 4, -4)
+	backdrop:SetVertexColor(0.9, 0.9, 1, 0.95)
+	button.backdrop = backdrop
+
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	local _, _, _, _, _, _, _, _, _, resolvedIcon = GetItemInfo(coolstats.PAPERDOLL_GEM_TOGGLE_ITEM_ID)
+	icon:SetTexture(resolvedIcon or coolstats.PAPERDOLL_GEM_TOGGLE_ICON)
+	icon:SetPoint("TOPLEFT", button, "TOPLEFT", 3, -3)
+	icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -3, 3)
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	button.icon = icon
+
+	local border = button:CreateTexture(nil, "OVERLAY")
+	border:SetTexture(coolstats.PAPERDOLL_GEM_BORDER)
+	border:SetPoint("TOPLEFT", button, "TOPLEFT", -4, 4)
+	border:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 4, -4)
+	button.border = border
+
+	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetTexture(coolstats.PAPERDOLL_GEM_BORDER)
+	highlight:SetBlendMode("ADD")
+	highlight:SetPoint("TOPLEFT", button, "TOPLEFT", -6, 6)
+	highlight:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 6, -6)
+	highlight:SetVertexColor(0.58, 0.78, 1, 0.85)
+	button.highlight = highlight
+
+	button:SetScript("OnClick", function()
+		if not db then
+			return
+		end
+		onToggle()
+		coolstats.PlayPaperDollGemToggleSound()
+		coolstats.UpdatePaperDollGemToggleButton()
+		coolstats.ApplyPaperDollNativeVisibility()
+		QueueUpdate("gear")
+	end)
+	button:SetScript("OnMouseDown", function(self)
+		if self.icon then
+			self.icon:ClearAllPoints()
+			self.icon:SetPoint("TOPLEFT", self, "TOPLEFT", 4, -4)
+			self.icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -2, 2)
+		end
+	end)
+	button:SetScript("OnMouseUp", function(self)
+		if self.icon then
+			self.icon:ClearAllPoints()
+			self.icon:SetPoint("TOPLEFT", self, "TOPLEFT", 3, -3)
+			self.icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -3, 3)
+		end
+	end)
+	button:SetScript("OnEnter", function(self)
+		if self.border then
+			self.border:SetVertexColor(0.58, 0.78, 1, 1)
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		local enabled = (key == "Player" and db and db.showPaperDollGems) or (key == "Inspect" and db and db.showInspectPaperDollGems)
+		if enabled then
+			GameTooltip:SetText("Hide " .. tooltipPrefix .. "Gems", 1, 0.82, 0.16)
+		else
+			GameTooltip:SetText("Show " .. tooltipPrefix .. "Gems", 1, 0.82, 0.16)
+		end
+		GameTooltip:AddLine("Toggle paperdoll gem icons.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function(self)
+		if self.icon then
+			self.icon:ClearAllPoints()
+			self.icon:SetPoint("TOPLEFT", self, "TOPLEFT", 3, -3)
+			self.icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -3, 3)
+		end
+		coolstats.UpdatePaperDollGemToggleButton()
+		GameTooltip:Hide()
+	end)
+
+	coolstats.UpdatePaperDollGemToggleButton()
+	return button
+end
+
+function coolstats.CreatePaperDollGemToggleButton()
+	if not ui.gemToggleButton and PaperDollFrame then
+		ui.gemToggleButton = coolstats.CreatePaperDollGemToggleButtonForFrame("Player", PaperDollFrame, CharacterWristSlot, 35, 79, "", function()
+			db.showPaperDollGems = not db.showPaperDollGems
+		end)
+	end
+	if not ui.inspectGemToggleButton and InspectFrame then
+		ui.inspectGemToggleButton = coolstats.CreatePaperDollGemToggleButtonForFrame("Inspect", InspectPaperDollFrame or InspectFrame, InspectWristSlot, 35, 79, "Inspect ", function()
+			db.showInspectPaperDollGems = not db.showInspectPaperDollGems
+		end)
+	end
+end
+
 function HideScrollFrameChrome(scrollFrame)
 	if not scrollFrame or not scrollFrame.GetName then
 		return
@@ -5957,6 +6676,7 @@ local function CreatePanel()
 	end
 	CreateStatsDrawerBackground(panel)
 	CreateToggleButton()
+	coolstats.CreatePaperDollGemToggleButton()
 	coolstats.CreateFavoriteModeButton(panel)
 	coolstats.CreateResetPanelButton(panel)
 	coolstats.CreateSettingsPanelButton(panel)
@@ -6007,6 +6727,7 @@ local function AnchorPanel()
 	ui.panel:SetFrameStrata(CharacterFrame:GetFrameStrata())
 	ui.panel:SetFrameLevel(parent:GetFrameLevel() + 5)
 	CreateToggleButton()
+	coolstats.CreatePaperDollGemToggleButton()
 	coolstats.CreateFavoriteModeButton(ui.panel)
 	coolstats.CreateResetPanelButton(ui.panel)
 	coolstats.CreateSettingsPanelButton(ui.panel)
@@ -6125,6 +6846,556 @@ local function CreateBadges()
 	end
 end
 
+function coolstats.CreatePaperDollGemForButton(groupKey, data)
+	local button = _G[data.button]
+	groupKey = groupKey or "player"
+	ui.paperDollGems[groupKey] = ui.paperDollGems[groupKey] or {}
+	if not button or ui.paperDollGems[groupKey][data.slot] then
+		return
+	end
+
+	local holder = CreateFrame("Frame", nil, button)
+	ui.paperDollGems[groupKey][data.slot] = holder
+	holder.groupKey = groupKey
+	SetSize(holder, coolstats.GetPaperDollGemFrameSize(), coolstats.GetPaperDollGemFrameSize())
+	holder:SetFrameLevel(button:GetFrameLevel() + 8)
+	holder.icons = {}
+
+	for index = 1, 3 do
+		local icon = CreateFrame("Button", nil, holder)
+		holder.icons[index] = icon
+		icon.inventorySlot = data.slot
+		icon.groupKey = groupKey
+		icon.socketIndex = index
+		icon:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		SetSize(icon, coolstats.GetPaperDollGemSize(), coolstats.GetPaperDollGemSize())
+		icon:SetFrameLevel(holder:GetFrameLevel() + 1)
+
+		icon.backdrop = icon:CreateTexture(nil, "BACKGROUND")
+		icon.backdrop:SetTexture(coolstats.PAPERDOLL_GEM_BACKDROP)
+		coolstats.SetPaperDollGemDrawLayer(icon.backdrop, "BACKGROUND", 0)
+		icon.backdrop:SetPoint("TOPLEFT", icon, "TOPLEFT", -3, 3)
+		icon.backdrop:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 3, -3)
+		icon.backdrop:SetVertexColor(0.02, 0.018, 0.016, 0.96)
+
+		icon.texture = icon:CreateTexture(nil, "BORDER")
+		coolstats.SetPaperDollGemDrawLayer(icon.texture, "BORDER", 0)
+		icon.texture:SetAllPoints(icon)
+		icon.texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+		icon.gemHighlight = icon:CreateTexture(nil, "HIGHLIGHT")
+		icon.gemHighlight:SetAllPoints(icon)
+		icon.gemHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		icon.gemHighlight:SetBlendMode("ADD")
+		icon.gemHighlight:SetVertexColor(1, 1, 1, 0.32)
+
+		icon.border = icon:CreateTexture(nil, "ARTWORK")
+		icon.border:SetTexture(coolstats.PAPERDOLL_GEM_BORDER)
+		coolstats.SetPaperDollGemDrawLayer(icon.border, "ARTWORK", 1)
+		icon.border:SetPoint("TOPLEFT", icon, "TOPLEFT", -4, 4)
+		icon.border:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 4, -4)
+
+		icon.prongs = icon:CreateTexture(nil, "OVERLAY")
+		icon.prongs:SetTexture(coolstats.PAPERDOLL_GEM_SOCKET_ATLAS)
+		coolstats.SetPaperDollGemDrawLayer(icon.prongs, "OVERLAY", 0)
+		icon.prongs:SetPoint("TOPLEFT", icon, "TOPLEFT", -4, 4)
+		icon.prongs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 4, -4)
+
+		icon.highlight = icon:CreateTexture(nil, "HIGHLIGHT")
+		icon.highlight:SetTexture(coolstats.PAPERDOLL_GEM_BORDER)
+		icon.highlight:SetBlendMode("ADD")
+		coolstats.SetPaperDollGemDrawLayer(icon.highlight, "HIGHLIGHT", 0)
+		icon.highlight:SetPoint("TOPLEFT", icon, "TOPLEFT", -6, 6)
+		icon.highlight:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 6, -6)
+		icon.highlight:SetVertexColor(0.75, 0.92, 1, 0.9)
+
+		icon.matchShine = CreateFrame("Frame", nil, icon)
+		icon.matchShine:SetAllPoints(icon)
+		icon.matchShine:SetFrameLevel(icon:GetFrameLevel() + 5)
+		icon.matchShine.timer = 0
+		icon.matchShine.active = false
+		for sparkIndex = 1, 4 do
+			local spark = icon.matchShine:CreateTexture(nil, "OVERLAY")
+			spark:SetTexture("Interface\\Cooldown\\star4")
+			spark:SetBlendMode("ADD")
+			spark:SetAlpha(0.9)
+			spark:Hide()
+			icon.matchShine["spark" .. sparkIndex] = spark
+		end
+		icon.matchShine:Hide()
+
+		icon:SetScript("OnClick", function(self, mouseButton)
+			if (mouseButton == "LeftButton" or mouseButton == "RightButton") and self.groupKey == "player" and SocketInventoryItem and self.inventorySlot then
+				GameTooltip:Hide()
+				pcall(SocketInventoryItem, self.inventorySlot)
+				if CursorHasItem and CursorHasItem() and ClickSocketButton and self.socketIndex then
+					pcall(ClickSocketButton, self.socketIndex)
+				end
+			end
+		end)
+		icon:SetScript("OnReceiveDrag", function(self)
+			if self.groupKey == "player" and SocketInventoryItem and self.inventorySlot then
+				GameTooltip:Hide()
+				pcall(SocketInventoryItem, self.inventorySlot)
+				if CursorHasItem and CursorHasItem() and ClickSocketButton and self.socketIndex then
+					pcall(ClickSocketButton, self.socketIndex)
+				end
+			end
+		end)
+		icon:SetScript("OnEnter", function(self)
+			if self.border and self.socketRed then
+				local red = min(1, self.socketRed + 0.22)
+				local green = min(1, self.socketGreen + 0.22)
+				local blue = min(1, self.socketBlue + 0.22)
+				self.border:SetVertexColor(red, green, blue, 1)
+				if self.prongs then
+					self.prongs:SetVertexColor(red, green, blue, 1)
+				end
+				if self.highlight then
+					self.highlight:SetVertexColor(red, green, blue, 0.95)
+				end
+			end
+			if self.texture then
+				self.texture:SetVertexColor(1.24, 1.24, 1.24, 1)
+			end
+			if self.gemHighlight and self.socketRed then
+				self.gemHighlight:SetVertexColor(min(1, self.socketRed + 0.35), min(1, self.socketGreen + 0.35), min(1, self.socketBlue + 0.35), 0.38)
+			end
+			if self.gemLink then
+				GameTooltip:SetOwner(self, self.tooltipAnchor or "ANCHOR_RIGHT")
+				GameTooltip:SetHyperlink(self.gemLink)
+				GameTooltip:Show()
+			elseif self.emptySocket then
+				GameTooltip:SetOwner(self, self.tooltipAnchor or "ANCHOR_RIGHT")
+				GameTooltip:SetText("Empty " .. coolstats.GetPaperDollSocketTypeLabel(self.socketType) .. " Socket", self.socketRed or 1, self.socketGreen or 1, self.socketBlue or 1)
+				if self.groupKey == "player" then
+					GameTooltip:AddLine("Click to socket this item.", 0.8, 0.8, 0.8, true)
+				end
+				GameTooltip:Show()
+			end
+		end)
+		icon:SetScript("OnLeave", function(self)
+			if self.border and self.socketRed then
+				self.border:SetVertexColor(self.socketRed, self.socketGreen, self.socketBlue, 1)
+				if self.prongs then
+					self.prongs:SetVertexColor(self.socketRed, self.socketGreen, self.socketBlue, 1)
+				end
+				if self.highlight then
+					self.highlight:SetVertexColor(self.socketRed, self.socketGreen, self.socketBlue, 0.8)
+				end
+			end
+			if self.texture then
+				self.texture:SetVertexColor(1, 1, 1, 1)
+			end
+			GameTooltip:Hide()
+		end)
+		icon:Hide()
+	end
+
+	holder:Hide()
+end
+
+function coolstats.CreatePaperDollGems()
+	for index = 1, #paperDollSlotButtons do
+		coolstats.CreatePaperDollGemForButton("player", paperDollSlotButtons[index])
+	end
+	for index = 1, #inspectSlotButtons do
+		coolstats.CreatePaperDollGemForButton("inspect", inspectSlotButtons[index])
+	end
+end
+
+function coolstats.EnsurePaperDollGemShineUpdater()
+	if ui.paperDollGemShineUpdater then
+		return
+	end
+
+	ui.paperDollGemShines = ui.paperDollGemShines or {}
+	ui.paperDollGemShineUpdater = CreateFrame("Frame")
+	ui.paperDollGemShineUpdater:Hide()
+	ui.paperDollGemShineUpdater:SetScript("OnUpdate", function(_, elapsed)
+		for index = #ui.paperDollGemShines, 1, -1 do
+			local shine = ui.paperDollGemShines[index]
+			if shine and shine.active then
+				coolstats.UpdatePaperDollGemShine(shine, elapsed)
+			else
+				table.remove(ui.paperDollGemShines, index)
+			end
+		end
+		if #ui.paperDollGemShines == 0 then
+			ui.paperDollGemShineUpdater:Hide()
+		end
+	end)
+end
+
+function coolstats.SetPaperDollGemSparkPosition(spark, point, relativeTo, relativePoint, offsetX, offsetY)
+	if not spark then
+		return
+	end
+	spark:ClearAllPoints()
+	spark:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
+end
+
+function coolstats.UpdatePaperDollGemShine(shine, elapsed)
+	local edgeDuration = 2.5
+	local duration = edgeDuration * 4
+	shine.timer = (shine.timer or 0) + (elapsed or 0)
+	if shine.timer > duration then
+		shine.timer = shine.timer - duration
+	end
+
+	local width = shine:GetWidth() or 0
+	local height = shine:GetHeight() or 0
+	local timer = shine.timer or 0
+	local progress
+	if timer <= edgeDuration then
+		progress = timer / edgeDuration
+		coolstats.SetPaperDollGemSparkPosition(shine.spark1, "CENTER", shine, "TOPLEFT", progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark2, "CENTER", shine, "TOPRIGHT", 0, -progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark3, "CENTER", shine, "BOTTOMRIGHT", -progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark4, "CENTER", shine, "BOTTOMLEFT", 0, progress * height)
+	elseif timer <= edgeDuration * 2 then
+		progress = (timer - edgeDuration) / edgeDuration
+		coolstats.SetPaperDollGemSparkPosition(shine.spark1, "CENTER", shine, "TOPRIGHT", 0, -progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark2, "CENTER", shine, "BOTTOMRIGHT", -progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark3, "CENTER", shine, "BOTTOMLEFT", 0, progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark4, "CENTER", shine, "TOPLEFT", progress * width, 0)
+	elseif timer <= edgeDuration * 3 then
+		progress = (timer - (edgeDuration * 2)) / edgeDuration
+		coolstats.SetPaperDollGemSparkPosition(shine.spark1, "CENTER", shine, "BOTTOMRIGHT", -progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark2, "CENTER", shine, "BOTTOMLEFT", 0, progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark3, "CENTER", shine, "TOPLEFT", progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark4, "CENTER", shine, "TOPRIGHT", 0, -progress * height)
+	else
+		progress = (timer - (edgeDuration * 3)) / edgeDuration
+		coolstats.SetPaperDollGemSparkPosition(shine.spark1, "CENTER", shine, "BOTTOMLEFT", 0, progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark2, "CENTER", shine, "TOPLEFT", progress * width, 0)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark3, "CENTER", shine, "TOPRIGHT", 0, -progress * height)
+		coolstats.SetPaperDollGemSparkPosition(shine.spark4, "CENTER", shine, "BOTTOMRIGHT", -progress * width, 0)
+	end
+end
+
+function coolstats.StartPaperDollGemShine(shine, red, green, blue)
+	if not shine then
+		return
+	end
+	coolstats.EnsurePaperDollGemShineUpdater()
+	local sparkSize = coolstats.GetPaperDollGemShineSize()
+	for index = 1, 4 do
+		local spark = shine["spark" .. index]
+		if spark then
+			SetSize(spark, sparkSize, sparkSize)
+			spark:SetVertexColor(red or 1, green or 1, blue or 1)
+			spark:Show()
+		end
+	end
+	shine.timer = shine.timer or 0
+	shine.active = true
+	shine:Show()
+	ui.paperDollGemShines = ui.paperDollGemShines or {}
+	local alreadyActive = false
+	for index = 1, #ui.paperDollGemShines do
+		if ui.paperDollGemShines[index] == shine then
+			alreadyActive = true
+			break
+		end
+	end
+	if not alreadyActive then
+		ui.paperDollGemShines[#ui.paperDollGemShines + 1] = shine
+	end
+	coolstats.UpdatePaperDollGemShine(shine, 0)
+	ui.paperDollGemShineUpdater:Show()
+end
+
+function coolstats.StopPaperDollGemShine(shine)
+	if not shine then
+		return
+	end
+	shine.active = false
+	for index = 1, 4 do
+		local spark = shine["spark" .. index]
+		if spark then
+			spark:Hide()
+		end
+	end
+	shine:Hide()
+end
+
+function coolstats.PositionPaperDollGemHolder(holder, button, side)
+	holder:ClearAllPoints()
+	if side == "LEFT" then
+		holder:SetPoint("RIGHT", button, "LEFT", -coolstats.GetPaperDollGemSpacing(), 0)
+		holder.tooltipAnchor = "ANCHOR_LEFT"
+	elseif side == "TOP" then
+		holder:SetPoint("BOTTOM", button, "TOP", 0, coolstats.GetPaperDollGemSpacing())
+		holder.tooltipAnchor = "ANCHOR_TOP"
+	else
+		holder:SetPoint("LEFT", button, "RIGHT", coolstats.GetPaperDollGemSpacing(), 0)
+		holder.tooltipAnchor = "ANCHOR_RIGHT"
+	end
+end
+
+function coolstats.GetPaperDollGemLayoutMode(side, count, button)
+	if count <= 1 or not button then
+		return "TRIANGLE"
+	end
+
+	local frameSize = coolstats.GetPaperDollGemFrameSize()
+	local lineSize = coolstats.GetPaperDollGemLineSize(count)
+	local buttonHeight = button.GetHeight and button:GetHeight() or 0
+	local buttonWidth = button.GetWidth and button:GetWidth() or 0
+	if side == "TOP" then
+		if buttonWidth > 0 and lineSize > buttonWidth then
+			return "STACK"
+		elseif buttonWidth > 0 and frameSize > buttonWidth then
+			return "LINE"
+		end
+	elseif buttonHeight > 0 and frameSize > buttonHeight then
+		return "LINE"
+	end
+	return "TRIANGLE"
+end
+
+function coolstats.ClampPaperDollGemHolder(holder, frame)
+	frame = frame or PaperDollFrame
+	if not holder or not frame or not holder.GetLeft or not frame.GetLeft then
+		return
+	end
+
+	local frameLeft = frame:GetLeft()
+	local frameRight = frame:GetRight()
+	local frameTop = frame:GetTop()
+	local frameBottom = frame:GetBottom()
+	local left = holder:GetLeft()
+	local right = holder:GetRight()
+	local top = holder:GetTop()
+	local bottom = holder:GetBottom()
+	if not frameLeft or not frameRight or not frameTop or not frameBottom or not left or not right or not top or not bottom then
+		return
+	end
+
+	local margin = 3
+	local xOffset = 0
+	local yOffset = 0
+	if left < frameLeft + margin then
+		xOffset = frameLeft + margin - left
+	elseif right > frameRight - margin then
+		xOffset = frameRight - margin - right
+	end
+	if bottom < frameBottom + margin then
+		yOffset = frameBottom + margin - bottom
+	elseif top > frameTop - margin then
+		yOffset = frameTop - margin - top
+	end
+	if xOffset ~= 0 or yOffset ~= 0 then
+		holder:ClearAllPoints()
+		holder:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left + xOffset, bottom + yOffset)
+	end
+end
+
+function coolstats.PositionPaperDollGemIcon(icon, index, count, side, layoutMode)
+	local size = coolstats.GetPaperDollGemSize()
+	if count == 1 then
+		local parent = icon:GetParent()
+		local width = parent and parent.GetWidth and parent:GetWidth() or size
+		local height = parent and parent.GetHeight and parent:GetHeight() or size
+		icon:ClearAllPoints()
+		icon:SetPoint("CENTER", icon:GetParent(), "TOPLEFT", width / 2, -(height / 2))
+		return
+	end
+
+	local frameSize = coolstats.GetPaperDollGemFrameSize()
+	if layoutMode == "LINE" then
+		local centerX = size / 2
+		local centerY = size / 2
+		if side == "LEFT" then
+			centerX = coolstats.GetPaperDollGemLineSize(count) - ((index - 0.5) * size) - ((index - 1) * coolstats.PAPERDOLL_GEM_GAP)
+		else
+			centerX = ((index - 0.5) * size) + ((index - 1) * coolstats.PAPERDOLL_GEM_GAP)
+		end
+		icon:ClearAllPoints()
+		icon:SetPoint("CENTER", icon:GetParent(), "TOPLEFT", centerX, -centerY)
+		return
+	end
+	if layoutMode == "STACK" then
+		local centerX = size / 2
+		local centerY = ((count - index + 0.5) * size) + ((count - index) * coolstats.PAPERDOLL_GEM_GAP)
+		icon:ClearAllPoints()
+		icon:SetPoint("CENTER", icon:GetParent(), "BOTTOMLEFT", centerX, centerY)
+		return
+	end
+
+	local nearX = size / 2
+	local farX = frameSize - nearX
+	if side == "LEFT" then
+		nearX, farX = farX, nearX
+	end
+
+	local centerX = nearX
+	local centerY = frameSize / 2
+	if side == "TOP" then
+		if count == 1 then
+			centerX = frameSize / 2
+			centerY = frameSize - (size / 2)
+		elseif count == 2 then
+			centerX = index == 1 and nearX or farX
+			centerY = frameSize - (size / 2)
+		elseif index == 1 then
+			centerX = nearX
+			centerY = frameSize - (size / 2)
+		elseif index == 2 then
+			centerX = farX
+			centerY = frameSize - (size / 2)
+		else
+			centerX = frameSize / 2
+			centerY = size / 2
+		end
+	elseif index == 1 then
+		centerY = size / 2
+	elseif index == 2 then
+		centerY = frameSize - (size / 2)
+	else
+		centerX = farX
+	end
+
+	icon:ClearAllPoints()
+	icon:SetPoint("CENTER", icon:GetParent(), "TOPLEFT", centerX, -centerY)
+end
+
+function coolstats.HidePaperDollGemHolder(holder)
+	if not holder then
+		return
+	end
+	for index = 1, 3 do
+		local icon = holder.icons and holder.icons[index]
+		if icon then
+			icon.gemLink = nil
+			icon.emptySocket = nil
+			icon.socketType = nil
+			coolstats.StopPaperDollGemShine(icon.matchShine)
+			icon:Hide()
+		end
+	end
+	holder:Hide()
+end
+
+function coolstats.UpdatePaperDollGems(groupKey, unit, shown, slotButtons, clampFrame)
+	if not db then
+		return
+	end
+
+	coolstats.CreatePaperDollGems()
+
+	groupKey = groupKey or "player"
+	slotButtons = slotButtons or paperDollSlotButtons
+	ui.paperDollGems[groupKey] = ui.paperDollGems[groupKey] or {}
+	local gemsEnabled = db.showPaperDollGems ~= false
+	if groupKey == "inspect" then
+		gemsEnabled = db.showInspectPaperDollGems ~= false
+	end
+
+	for index = 1, #slotButtons do
+		local data = slotButtons[index]
+		local holder = ui.paperDollGems[groupKey][data.slot]
+		local button = _G[data.button]
+		local itemLink = unit and GetInventoryItemLink(unit, data.slot)
+		local gems = gemsEnabled and shown and itemLink and coolstats.GetPaperDollGemEntriesFromItemLink(itemLink)
+		if holder and button and gems and #gems > 0 then
+			local side = coolstats.paperDollGemAnchors[data.slot] or "RIGHT"
+			local layoutMode = coolstats.GetPaperDollGemLayoutMode(side, #gems, button)
+			local size = coolstats.GetPaperDollGemSize()
+			local circleOffset = floor(((size * coolstats.GetPaperDollGemCircleScale()) - size) / 2 + 4.5)
+			local prongOffset = floor(((size * coolstats.GetPaperDollGemProngScale()) - size) / 2 + 4.5)
+			if #gems == 1 then
+				SetSize(holder, size, size)
+			elseif layoutMode == "LINE" then
+				SetSize(holder, coolstats.GetPaperDollGemLineSize(#gems), size)
+			elseif layoutMode == "STACK" then
+				SetSize(holder, size, coolstats.GetPaperDollGemLineSize(#gems))
+			else
+				SetSize(holder, coolstats.GetPaperDollGemFrameSize(), coolstats.GetPaperDollGemFrameSize())
+			end
+			coolstats.PositionPaperDollGemHolder(holder, button, side)
+			holder:Show()
+			coolstats.ClampPaperDollGemHolder(holder, clampFrame)
+			for gemIndex = 1, 3 do
+				local icon = holder.icons[gemIndex]
+				local gem = gems[gemIndex]
+				if icon and gem then
+					local red, green, blue = coolstats.GetPaperDollGemSocketColor(gem.socketType)
+					local left, right, top, bottom = coolstats.GetPaperDollGemProngTexCoord(gem.socketType)
+					local matchesSocket = gem.link and coolstats.DoesPaperDollGemMatchSocket(gem.socketType, gem.gemSocketType)
+					local iconScale = coolstats.GetPaperDollGemIconScale()
+					local gemInset = floor((size - (size * iconScale)) / 2 + 0.5)
+					SetSize(icon, size, size)
+					icon.backdrop:ClearAllPoints()
+					icon.backdrop:SetPoint("TOPLEFT", icon, "TOPLEFT", -circleOffset, circleOffset)
+					icon.backdrop:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", circleOffset, -circleOffset)
+					icon.border:ClearAllPoints()
+					icon.border:SetPoint("TOPLEFT", icon, "TOPLEFT", -circleOffset, circleOffset)
+					icon.border:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", circleOffset, -circleOffset)
+					icon.prongs:ClearAllPoints()
+					icon.prongs:SetPoint("TOPLEFT", icon, "TOPLEFT", -prongOffset, prongOffset)
+					icon.prongs:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", prongOffset, -prongOffset)
+					icon.highlight:ClearAllPoints()
+					icon.highlight:SetPoint("TOPLEFT", icon, "TOPLEFT", -(circleOffset + 2), circleOffset + 2)
+					icon.highlight:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", circleOffset + 2, -(circleOffset + 2))
+					icon.matchShine:ClearAllPoints()
+					icon.matchShine:SetPoint("TOPLEFT", icon, "TOPLEFT", -1, 1)
+					icon.matchShine:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 1, -1)
+					if gem.icon then
+						icon.texture:SetTexture(gem.icon)
+						icon.texture:ClearAllPoints()
+						icon.texture:SetPoint("TOPLEFT", icon, "TOPLEFT", gemInset, -gemInset)
+						icon.texture:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -gemInset, gemInset)
+						icon.texture:SetVertexColor(1, 1, 1, 1)
+						icon.texture:Show()
+						icon.gemHighlight:SetTexture(gem.icon)
+						icon.gemHighlight:ClearAllPoints()
+						icon.gemHighlight:SetPoint("TOPLEFT", icon.texture, "TOPLEFT", 0, 0)
+						icon.gemHighlight:SetPoint("BOTTOMRIGHT", icon.texture, "BOTTOMRIGHT", 0, 0)
+						icon.gemHighlight:Show()
+					else
+						icon.texture:SetTexture(nil)
+						icon.texture:Hide()
+						icon.gemHighlight:SetTexture(nil)
+						icon.gemHighlight:Hide()
+					end
+					icon.border:SetVertexColor(red, green, blue, 1)
+					icon.prongs:SetTexCoord(left, right, top, bottom)
+					icon.prongs:SetVertexColor(red, green, blue, 1)
+					coolstats.SetPaperDollGemDrawLayer(icon.texture, "BORDER", 0)
+					coolstats.SetPaperDollGemDrawLayer(icon.border, "ARTWORK", 1)
+					coolstats.SetPaperDollGemDrawLayer(icon.prongs, "OVERLAY", 0)
+					icon.highlight:SetVertexColor(red, green, blue, 0.8)
+					icon.socketRed = red
+					icon.socketGreen = green
+					icon.socketBlue = blue
+					icon.socketType = gem.socketType
+					icon.socketIndex = gem.socketIndex or gemIndex
+					icon.gemLink = gem.link
+					icon.emptySocket = gem.emptySocket and true or false
+					icon.tooltipAnchor = holder.tooltipAnchor
+					if matchesSocket then
+						coolstats.StartPaperDollGemShine(icon.matchShine, red, green, blue)
+					else
+						coolstats.StopPaperDollGemShine(icon.matchShine)
+					end
+					coolstats.PositionPaperDollGemIcon(icon, gemIndex, #gems, side, layoutMode)
+					icon:Show()
+				elseif icon then
+					icon.gemLink = nil
+					icon.emptySocket = nil
+					icon.socketType = nil
+					coolstats.StopPaperDollGemShine(icon.matchShine)
+					icon:Hide()
+				end
+			end
+		else
+			coolstats.HidePaperDollGemHolder(holder)
+		end
+	end
+end
+
 local function CreateInspectSummary()
 	if ui.inspectSummary or not InspectFrame then
 		return
@@ -6177,6 +7448,15 @@ local function CreateModelScore(key, parent)
 	ui.modelScores[key] = frame
 end
 
+local function PositionModelScore(frame)
+	if not frame then
+		return
+	end
+	local options = coolstats.GetModelScoreOptions()
+	frame:ClearAllPoints()
+	frame:SetPoint("BOTTOMLEFT", frame:GetParent(), "BOTTOMLEFT", tonumber(options.x) or 22, tonumber(options.y) or 7)
+end
+
 local function CreateModelScores()
 	CreateModelScore("Player", CharacterModelFrame)
 	CreateModelScore("Inspect", InspectModelFrame)
@@ -6188,6 +7468,7 @@ local function UpdateModelScore(key, unit, shown)
 		return
 	end
 
+	PositionModelScore(frame)
 	SetVisible(frame, shown)
 	if not shown or not unit or not UnitExists(unit) then
 		return
@@ -6245,6 +7526,8 @@ end
 local function HideCharacterPanelRuntime()
 	SetVisible(ui.panel, false)
 	SetVisible(ui.toggleButton, false)
+	SetVisible(ui.gemToggleButton, false)
+	SetVisible(ui.inspectGemToggleButton, false)
 	SetVisible(ui.editButton, false)
 	SetVisible(ui.popoutModeButton, false)
 	SetVisible(ui.favoriteModeButton, false)
@@ -6262,6 +7545,11 @@ local function HideCharacterPanelRuntime()
 			end
 		end
 	end
+	for _, group in pairs(ui.paperDollGems) do
+		for _, holder in pairs(group) do
+			coolstats.HidePaperDollGemHolder(holder)
+		end
+	end
 	for _, frame in pairs(ui.modelScores) do
 		SetVisible(frame, false)
 	end
@@ -6276,6 +7564,68 @@ end
 
 function coolstats.CharacterStatsPanelIsVisible()
 	return ui.panel and ui.panel:IsShown()
+end
+
+function coolstats.ApplyPaperDollNativeFrameVisibility(frame, suppressed)
+	if not frame then
+		return
+	end
+	if not frame.coolstatsPaperDollVisibilityHooked and frame.HookScript then
+		frame.coolstatsPaperDollVisibilityHooked = true
+		frame:HookScript("OnShow", function(self)
+			if self.coolstatsPaperDollSuppressed then
+				self:Hide()
+			end
+		end)
+	end
+	frame.coolstatsPaperDollSuppressed = suppressed == true
+	if suppressed then
+		frame:Hide()
+		if frame.EnableMouse then
+			frame:EnableMouse(false)
+		end
+		if frame.SetAlpha then
+			frame:SetAlpha(0)
+		end
+	else
+		if frame.SetAlpha then
+			frame:SetAlpha(1)
+		end
+		if frame.EnableMouse then
+			frame:EnableMouse(true)
+		end
+		if frame.Show then
+			frame:Show()
+		end
+	end
+end
+
+function coolstats.ApplyPaperDollNativeVisibility()
+	local gemsShown = db and db.showPaperDollGems ~= false
+	local hideResistances = gemsShown and db and db.hidePaperDollResistances ~= false
+	local hideRotateButtons = gemsShown and db and db.hidePaperDollRotateButtons ~= false
+	for index = 1, #coolstats.PAPERDOLL_RESISTANCE_FRAME_NAMES do
+		coolstats.ApplyPaperDollNativeFrameVisibility(_G[coolstats.PAPERDOLL_RESISTANCE_FRAME_NAMES[index]], hideResistances)
+	end
+	for index = 1, #coolstats.PAPERDOLL_ROTATE_BUTTON_NAMES do
+		coolstats.ApplyPaperDollNativeFrameVisibility(_G[coolstats.PAPERDOLL_ROTATE_BUTTON_NAMES[index]], hideRotateButtons)
+	end
+	local inspectGemsShown = db and db.showInspectPaperDollGems ~= false
+	local hideInspectRotateButtons = InspectFrame and InspectFrame:IsShown() and inspectGemsShown
+	for index = 1, #coolstats.INSPECT_ROTATE_BUTTON_NAMES do
+		coolstats.ApplyPaperDollNativeFrameVisibility(_G[coolstats.INSPECT_ROTATE_BUTTON_NAMES[index]], hideInspectRotateButtons)
+	end
+end
+
+function coolstats.ApplyPaperDollModelRotation()
+	if not CharacterModelFrame then
+		return
+	end
+	local options = coolstats.GetPaperDollModelOptions()
+	local rotation = max(0, min(360, tonumber(options.rotation) or 0))
+	if CharacterModelFrame.SetFacing then
+		pcall(CharacterModelFrame.SetFacing, CharacterModelFrame, rotation * 0.017453292519943)
+	end
 end
 
 function coolstats.HasActiveStatPopouts()
@@ -6295,11 +7645,13 @@ function coolstats.HasActiveStatPopouts()
 end
 
 local function UpdateToggleButton()
-	if not ui.toggleButton then
-		return
+	if ui.toggleButton then
+		SetVisible(ui.toggleButton, CharacterFrame and CharacterFrame:IsShown() and PaperDollFrame and PaperDollFrame:IsShown())
+		SetToggleButtonTextures(ui.toggleButton, db and db.showStatsPanel)
 	end
-	SetVisible(ui.toggleButton, CharacterFrame and CharacterFrame:IsShown() and PaperDollFrame and PaperDollFrame:IsShown())
-	SetToggleButtonTextures(ui.toggleButton, db and db.showStatsPanel)
+	coolstats.UpdatePaperDollGemToggleButton()
+	coolstats.ApplyPaperDollNativeVisibility()
+	coolstats.ApplyPaperDollModelRotation()
 end
 
 local function UpdateEditButton()
@@ -6380,6 +7732,8 @@ local function UpdateBadges()
 	end
 
 	CreateBadges()
+	coolstats.UpdatePaperDollGems("player", "player", PaperDollIsVisible(), paperDollSlotButtons, PaperDollFrame)
+	coolstats.UpdatePaperDollGems("inspect", GetInspectUnit(), InspectFrame and InspectFrame:IsShown(), inspectSlotButtons, InspectFrame)
 	UpdateBadgeGroup("player", "player", paperDollSlotButtons, PaperDollIsVisible())
 	UpdateBadgeGroup("inspect", GetInspectUnit(), inspectSlotButtons, InspectFrame and InspectFrame:IsShown())
 end
@@ -6705,9 +8059,30 @@ local function RefreshCharacterHooks()
 		InspectFrame:HookScript("OnShow", function()
 			CreateBadges()
 			CreateInspectSummary()
+			coolstats.CreatePaperDollGemToggleButton()
+			coolstats.RefreshInspectPaperDollGemsForUnitChange()
 			UpdateAllImmediate()
 		end)
-		InspectFrame:HookScript("OnHide", UpdateAllImmediate)
+		InspectFrame:HookScript("OnHide", function()
+			coolstats.lastInspectGemUnitKey = nil
+			coolstats.ClearInspectPaperDollGems()
+			UpdateAllImmediate()
+		end)
+	end
+	if not ui.inspectGemWatcher then
+		ui.inspectGemWatcher = CreateFrame("Frame")
+		ui.inspectGemWatcher.elapsed = 0
+		ui.inspectGemWatcher:SetScript("OnUpdate", function(self, elapsed)
+			if not InspectFrame or not InspectFrame:IsShown() then
+				self.elapsed = 0
+				return
+			end
+			self.elapsed = (self.elapsed or 0) + (elapsed or 0)
+			if self.elapsed >= 0.12 then
+				self.elapsed = 0
+				coolstats.RefreshInspectPaperDollGemsForUnitChange()
+			end
+		end)
 	end
 end
 

@@ -2,7 +2,7 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods Icecrown Citadel 01
 ## Notes: Optional Icecrown Citadel UwU Logs layer 1/6 for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.42-rg1
+## Version: 0.2.44-rg1
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats, coolstats_Data_RisingGods

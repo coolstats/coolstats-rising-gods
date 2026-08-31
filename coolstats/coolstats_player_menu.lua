@@ -1,9 +1,15 @@
 local coolstats = _G.coolstats or {}
 
-local DETACHED_BUTTON_GRACE_SECONDS = 2.5
-local DETACHED_BUTTON_CLOSE_GRACE_SECONDS = 0.45
+local DETACHED_BUTTON_GRACE_SECONDS = 5.0
+local DETACHED_BUTTON_CLOSE_GRACE_SECONDS = 0.2
+local DETACHED_BUTTON_OPEN_GRACE_SECONDS = 0.85
+local DETACHED_BUTTON_DUPLICATE_OPEN_SECONDS = 0.06
+local DETACHED_BUTTON_REOPEN_SUPPRESS_SECONDS = 0.35
+local DETACHED_BUTTON_DROPDOWN_LOST_SECONDS = 0.0
 local detachedButton
 local hooked
+local suppressPlayerName
+local suppressUntil
 
 local PLAYER_MENU_TYPES = {
 	SELF = true,
@@ -477,8 +483,45 @@ local function HideDetachedButton()
 		detachedButton.expiresAt = nil
 		detachedButton.pendingAnchorUntil = nil
 		detachedButton.closeGraceUntil = nil
+		detachedButton.openGraceUntil = nil
+		detachedButton.shownAt = nil
+		detachedButton.readyForOutsideClick = nil
+		detachedButton.sawDropdown = nil
+		detachedButton.dropdownLostAt = nil
 		ClearButtonTravelRegion(detachedButton)
 	end
+end
+
+local function SuppressDetachedButtonReopen(playerName)
+	playerName = CleanPlayerName(playerName)
+	if playerName == "" then
+		return
+	end
+	suppressPlayerName = playerName
+	suppressUntil = ((GetTime and GetTime()) or 0) + DETACHED_BUTTON_REOPEN_SUPPRESS_SECONDS
+end
+
+local function IsDetachedButtonReopenSuppressed(playerName)
+	local now = (GetTime and GetTime()) or 0
+	if not suppressUntil or now > suppressUntil then
+		suppressPlayerName = nil
+		suppressUntil = nil
+		return false
+	end
+	return suppressPlayerName == CleanPlayerName(playerName)
+end
+
+local function HideDetachedButtonForDropdownAction()
+	if detachedButton and IsVisibleFrame(detachedButton) and not (detachedButton.IsMouseOver and detachedButton:IsMouseOver()) then
+		HideDetachedButton()
+	end
+end
+
+local function IsAnyMouseButtonDown()
+	if not IsMouseButtonDown then
+		return false
+	end
+	return IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")
 end
 
 local function OpenUwULogsForName(name)
@@ -522,13 +565,35 @@ end
 
 local function StartDetachedButtonCloseGrace()
 	if detachedButton and IsVisibleFrame(detachedButton) and detachedButton.playerName then
+		local now = GetNow()
+		local mouseOver = detachedButton.IsMouseOver and detachedButton:IsMouseOver()
 		if IsMouseButtonDownOnDropdownAction() then
 			HideDetachedButton()
 			return
 		end
-		if IsCursorNearDetachedButton(detachedButton) then
-			detachedButton.closeGraceUntil = GetNow() + DETACHED_BUTTON_CLOSE_GRACE_SECONDS
+		if detachedButton.shownAt and IsAnyMouseButtonDown() and not mouseOver then
+			local elapsed = now - detachedButton.shownAt
+			if elapsed > DETACHED_BUTTON_DUPLICATE_OPEN_SECONDS then
+				SuppressDetachedButtonReopen(detachedButton.playerName)
+				HideDetachedButton()
+				return
+			end
+		end
+		if detachedButton.sawDropdown and not mouseOver and not UpdateOpenDropdownRegion(detachedButton) then
+			HideDetachedButton()
+			return
+		end
+		if detachedButton.openGraceUntil and now <= detachedButton.openGraceUntil then
+			detachedButton.closeGraceUntil = nil
+			detachedButton.expiresAt = now + DETACHED_BUTTON_GRACE_SECONDS
+			return
+		end
+		if mouseOver then
+			detachedButton.closeGraceUntil = now + DETACHED_BUTTON_CLOSE_GRACE_SECONDS
 			detachedButton.expiresAt = detachedButton.closeGraceUntil
+		elseif not IsAnyMouseButtonDown() then
+			detachedButton.closeGraceUntil = nil
+			detachedButton.expiresAt = now + DETACHED_BUTTON_GRACE_SECONDS
 		else
 			HideDetachedButton()
 		end
@@ -605,6 +670,20 @@ local function CreateDetachedButton()
 		local now = GetNow()
 		local listShown = UpdateOpenDropdownRegion(self)
 		local mouseOver = self.IsMouseOver and self:IsMouseOver()
+		local mouseDown = IsAnyMouseButtonDown()
+		if listShown then
+			self.sawDropdown = true
+			self.dropdownLostAt = nil
+		elseif self.sawDropdown and not mouseOver and not self.dropdownLostAt then
+			self.dropdownLostAt = now
+		end
+		if not mouseDown then
+			self.readyForOutsideClick = true
+		elseif self.readyForOutsideClick and not mouseOver then
+			SuppressDetachedButtonReopen(self.playerName)
+			HideDetachedButton()
+			return
+		end
 		if self.closeGraceUntil then
 			if listShown then
 				self.closeGraceUntil = nil
@@ -629,6 +708,10 @@ local function CreateDetachedButton()
 			end
 			return
 		end
+		if self.dropdownLostAt and now - self.dropdownLostAt > DETACHED_BUTTON_DROPDOWN_LOST_SECONDS then
+			HideDetachedButton()
+			return
+		end
 		if self.expiresAt and now > self.expiresAt then
 			HideDetachedButton()
 		end
@@ -642,10 +725,30 @@ local function ShowDetachedButton(dropdownMenu, which, unit, name, ...)
 	if not IsPlayerPopup(which, unit, playerName) then
 		return
 	end
+	if IsDetachedButtonReopenSuppressed(playerName) then
+		return
+	end
 
 	local button = CreateDetachedButton()
+	local now = GetNow()
+	if IsVisibleFrame(button) and button.playerName == playerName and button.shownAt then
+		local elapsed = now - button.shownAt
+		if elapsed <= DETACHED_BUTTON_DUPLICATE_OPEN_SECONDS then
+			return
+		end
+		if elapsed <= DETACHED_BUTTON_OPEN_GRACE_SECONDS and IsMouseButtonDown and IsMouseButtonDown("RightButton") then
+			SuppressDetachedButtonReopen(playerName)
+			HideDetachedButton()
+			return
+		end
+	end
 	button.playerName = playerName
-	button.pendingAnchorUntil = GetNow() + 0.5
+	button.shownAt = now
+	button.readyForOutsideClick = false
+	button.sawDropdown = false
+	button.dropdownLostAt = nil
+	button.pendingAnchorUntil = now + 0.5
+	button.openGraceUntil = now + DETACHED_BUTTON_OPEN_GRACE_SECONDS
 	button.closeGraceUntil = nil
 	RefreshButtonGrace(button)
 	button:ClearAllPoints()
@@ -703,6 +806,9 @@ local function InitializeDetachedUnitPopupAction()
 	end
 	if type(CloseDropDownMenus) == "function" then
 		hooksecurefunc("CloseDropDownMenus", StartDetachedButtonCloseGrace)
+	end
+	if type(UIDropDownMenuButton_OnClick) == "function" then
+		hooksecurefunc("UIDropDownMenuButton_OnClick", HideDetachedButtonForDropdownAction)
 	end
 end
 

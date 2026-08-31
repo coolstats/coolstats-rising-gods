@@ -2,13 +2,13 @@
 ## Title: |cff00c0ffcoolstats|r Data - Rising-Gods
 ## Notes: Realm-specific UwU Logs data for Rising-Gods.
 ## Author: coolstats
-## Version: 0.2.42-rg1
+## Version: 0.2.44-rg1
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## RequiredDeps: coolstats
 ## X-coolstats-Realm: Rising-Gods
 ## X-coolstats-Phase: icc
-## X-coolstats-PlayerCount: 10247
+## X-coolstats-PlayerCount: 10350
 ## X-coolstats-PlayerChunks: 6
 
 data\logs\icc\coolstats_uwu_data.lua
