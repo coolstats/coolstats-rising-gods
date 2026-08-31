@@ -90,7 +90,7 @@ $runtimeFiles = @(
 
 $assetRoot = Join-Path $publishPath "assets"
 $runtimeFiles += Get-ChildItem -LiteralPath $assetRoot -Recurse -File |
-	Where-Object { $_.Extension -match "^\.(blp|ogg)$" } |
+	Where-Object { $_.Extension -match "^\.(blp|ogg|svg)$" } |
 	ForEach-Object {
 		$assetRelativePath = $_.FullName.Substring($assetRoot.Length + 1).Replace("\", "/")
 		"assets/" + $assetRelativePath
