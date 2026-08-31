@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.44-rg1 - 2026-08-31
+
+### Warmane 0.2.43-0.2.44 parity
+
+- Ported the latest paperdoll gem display, inspect gem display, socket
+  color/mismatch handling, gem sizing controls, model score positioning, and
+  player-menu behavior updates from Warmane.
+- Kept Rising Gods-specific update-center and profile links pointed at
+  `https://github.com/coolstats/coolstats-rising-gods` and
+  `https://db.rising-gods.de/?profile=eu.rising-gods.<name>`.
+- Updated release packaging so nested paperdoll gem art under
+  `assets/paperdoll/` is included in the install ZIP.
+
+### Rising Gods data
+
+- Refreshed the Rising Gods ICC UwU Logs dataset with 10,350 players written
+  across 6 ranked-player chunks in the public updater-safe sharded data layout.
+- Revalidated both public log updaters, `Update_Rising_Gods_Logs.bat` and
+  `Update_Rising_Gods_Logs.sh`, as part of the release pipeline.
+
 ## 0.2.42-rg1 - 2026-08-16
 
 ### Warmane 0.2.40-0.2.42 parity

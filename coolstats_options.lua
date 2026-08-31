@@ -181,17 +181,92 @@ local function GetItemLevelBadgePositionLabel(key)
 	return "Default"
 end
 
+local function GetPaperDollGemOptions()
+	local db = GetDB()
+	local defaults = GetDefaults()
+	if db then
+		db.paperDollGems = db.paperDollGems or {}
+		if defaults and defaults.paperDollGems then
+			for key, value in pairs(defaults.paperDollGems) do
+				if db.paperDollGems[key] == nil then
+					db.paperDollGems[key] = value
+				end
+			end
+		end
+		return db.paperDollGems
+	end
+	return defaults and defaults.paperDollGems or { size = 14, iconScale = 1, spacing = 7, circleScale = 1, prongScale = 0.82 }
+end
+
+local function GetPaperDollGemDefaultValue(key, fallback)
+	local defaults = GetDefaults()
+	if defaults and defaults.paperDollGems and defaults.paperDollGems[key] ~= nil then
+		return defaults.paperDollGems[key]
+	end
+	return fallback
+end
+
+local function GetModelScoreOptions()
+	local db = GetDB()
+	local defaults = GetDefaults()
+	if db then
+		db.modelScore = db.modelScore or {}
+		if defaults and defaults.modelScore then
+			for key, value in pairs(defaults.modelScore) do
+				if db.modelScore[key] == nil then
+					db.modelScore[key] = value
+				end
+			end
+		end
+		return db.modelScore
+	end
+	return defaults and defaults.modelScore or { x = 22, y = 7 }
+end
+
+local function GetModelScoreDefaultValue(key, fallback)
+	local defaults = GetDefaults()
+	if defaults and defaults.modelScore and defaults.modelScore[key] ~= nil then
+		return defaults.modelScore[key]
+	end
+	return fallback
+end
+
+local function GetPaperDollModelOptions()
+	local db = GetDB()
+	local defaults = GetDefaults()
+	if db then
+		db.paperDollModel = db.paperDollModel or {}
+		if defaults and defaults.paperDollModel then
+			for key, value in pairs(defaults.paperDollModel) do
+				if db.paperDollModel[key] == nil then
+					db.paperDollModel[key] = value
+				end
+			end
+		end
+		return db.paperDollModel
+	end
+	return defaults and defaults.paperDollModel or { rotation = 0 }
+end
+
+local function GetPaperDollModelDefaultValue(key, fallback)
+	local defaults = GetDefaults()
+	if defaults and defaults.paperDollModel and defaults.paperDollModel[key] ~= nil then
+		return defaults.paperDollModel[key]
+	end
+	return fallback
+end
+
 local function RefreshAddon(scope)
 	scope = scope or "all"
 	local refreshAll = scope == "all"
-	local refreshCharacter = refreshAll or scope == "character" or scope == "itemLevels" or scope == "background"
+	local refreshCharacter = refreshAll or scope == "character" or scope == "itemLevels" or scope == "paperDoll" or scope == "modelScore" or scope == "background"
 	local refreshBackground = refreshAll or scope == "background" or scope == "character"
 	local refreshBrowser = refreshAll or scope == "tooltip" or scope == "browser"
 
 	if refreshBackground and coolstats.ApplyBackgroundOptions then
 		coolstats.ApplyBackgroundOptions()
 	end
-	if refreshCharacter and scope == "itemLevels" and coolstats.RunCharacterPanelUpdateCategories then
+	if refreshCharacter and (scope == "itemLevels" or scope == "paperDoll" or scope == "modelScore") and coolstats.RunCharacterPanelUpdateCategories then
 		coolstats.RunCharacterPanelUpdateCategories({ gear = true, layout = true })
 	elseif refreshCharacter and scope == "background" and coolstats.RunCharacterPanelUpdateCategories then
 		coolstats.RunCharacterPanelUpdateCategories({ stats = true, layout = true })
@@ -1214,6 +1289,181 @@ local function CreateItemLevelFontSizeSlider(parent, name, yOffset)
 	return slider
 end
 
+local function UpdatePaperDollGemSliderText(slider)
+	if not slider then
+		return
+	end
+	local value = math.floor((slider:GetValue() or 0) + 0.5)
+	local text = _G[slider:GetName() .. "Text"]
+	if text then
+		text:SetText((slider.labelText or "Gem option") .. ": " .. tostring(value) .. (slider.valueSuffix or ""))
+	end
+end
+
+local function CreatePaperDollGemSlider(parent, name, labelText, yOffset, optionKey, minValue, maxValue, step, valueSuffix)
+	local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
+	slider:SetWidth(240)
+	slider:SetMinMaxValues(minValue, maxValue)
+	slider:SetValueStep(step)
+	slider.controlType = "paperDollGemSlider"
+	slider.optionKey = optionKey
+	slider.labelText = labelText
+	slider.valueSuffix = valueSuffix or ""
+	_G[slider:GetName() .. "Low"]:SetText(tostring(minValue) .. slider.valueSuffix)
+	_G[slider:GetName() .. "High"]:SetText(tostring(maxValue) .. slider.valueSuffix)
+	slider:SetScript("OnValueChanged", function(self, value)
+		local rounded = value
+		if self.step and self.step > 0 then
+			rounded = math.floor((value / self.step) + 0.5) * self.step
+		end
+		rounded = math.max(minValue, math.min(maxValue, rounded))
+		if self.updating then
+			UpdatePaperDollGemSliderText(self)
+			return
+		end
+		if math.abs(self:GetValue() - rounded) > 0.001 then
+			self:SetValue(rounded)
+			return
+		end
+		GetPaperDollGemOptions()[optionKey] = rounded / (valueSuffix == "%" and 100 or 1)
+		UpdatePaperDollGemSliderText(self)
+		RefreshAddon("paperDoll")
+	end)
+	slider:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(labelText, 1, 0.82, 0.16)
+		GameTooltip:AddLine("Adjust paperdoll gem icon visuals.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	slider:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	parent.controls[#parent.controls + 1] = slider
+	CreateSliderResetButton(parent, slider, yOffset, function()
+		local value = GetPaperDollGemDefaultValue(optionKey, minValue)
+		if valueSuffix == "%" then
+			value = value * 100
+		end
+		return value
+	end, function(self, value)
+		GetPaperDollGemOptions()[optionKey] = value / (valueSuffix == "%" and 100 or 1)
+		UpdatePaperDollGemSliderText(self)
+	end, "paperDoll")
+	return slider
+end
+
+local function UpdateModelScoreSliderText(slider)
+	if not slider then
+		return
+	end
+	local value = math.floor((slider:GetValue() or 0) + 0.5)
+	local text = _G[slider:GetName() .. "Text"]
+	if text then
+		text:SetText((slider.labelText or "Model score") .. ": " .. tostring(value) .. "px")
+	end
+end
+
+local function CreateModelScoreSlider(parent, name, labelText, yOffset, optionKey, minValue, maxValue)
+	local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
+	slider:SetWidth(240)
+	slider:SetMinMaxValues(minValue, maxValue)
+	slider:SetValueStep(1)
+	slider.controlType = "modelScoreSlider"
+	slider.optionKey = optionKey
+	slider.labelText = labelText
+	_G[slider:GetName() .. "Low"]:SetText(tostring(minValue))
+	_G[slider:GetName() .. "High"]:SetText(tostring(maxValue))
+	slider:SetScript("OnValueChanged", function(self, value)
+		local rounded = math.floor((value or 0) + 0.5)
+		rounded = math.max(minValue, math.min(maxValue, rounded))
+		if self.updating then
+			UpdateModelScoreSliderText(self)
+			return
+		end
+		if self:GetValue() ~= rounded then
+			self:SetValue(rounded)
+			return
+		end
+		GetModelScoreOptions()[optionKey] = rounded
+		UpdateModelScoreSliderText(self)
+		RefreshAddon("modelScore")
+	end)
+	slider:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(labelText, 1, 0.82, 0.16)
+		GameTooltip:AddLine("Move the GearScore and Item Level text on the paperdoll model.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	slider:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	parent.controls[#parent.controls + 1] = slider
+	CreateSliderResetButton(parent, slider, yOffset, function()
+		return GetModelScoreDefaultValue(optionKey, optionKey == "x" and 22 or 7)
+	end, function(self, value)
+		GetModelScoreOptions()[optionKey] = value
+		UpdateModelScoreSliderText(self)
+	end, "modelScore")
+	return slider
+end
+
+local function UpdatePaperDollModelRotationSliderText(slider)
+	if not slider then
+		return
+	end
+	local value = math.floor((slider:GetValue() or 0) + 0.5)
+	local text = _G[slider:GetName() .. "Text"]
+	if text then
+		text:SetText((slider.labelText or "Model rotation") .. ": " .. tostring(value) .. " deg")
+	end
+end
+
+local function CreatePaperDollModelRotationSlider(parent, name, yOffset)
+	local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+	slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, yOffset)
+	slider:SetWidth(240)
+	slider:SetMinMaxValues(0, 360)
+	slider:SetValueStep(5)
+	slider.controlType = "paperDollModelRotation"
+	slider.labelText = "Model rotation"
+	_G[slider:GetName() .. "Low"]:SetText("0")
+	_G[slider:GetName() .. "High"]:SetText("360")
+	slider:SetScript("OnValueChanged", function(self, value)
+		local rounded = math.floor(((value or 0) / 5) + 0.5) * 5
+		rounded = math.max(0, math.min(360, rounded))
+		if self.updating then
+			UpdatePaperDollModelRotationSliderText(self)
+			return
+		end
+		if self:GetValue() ~= rounded then
+			self:SetValue(rounded)
+			return
+		end
+		GetPaperDollModelOptions().rotation = rounded
+		UpdatePaperDollModelRotationSliderText(self)
+		RefreshAddon("paperDoll")
+	end)
+	slider:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Model Rotation", 1, 0.82, 0.16)
+		GameTooltip:AddLine("Adjusts the paperdoll model facing when the client exposes model rotation support.", 0.86, 0.86, 0.78, true)
+		GameTooltip:Show()
+	end)
+	slider:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	parent.controls[#parent.controls + 1] = slider
+	CreateSliderResetButton(parent, slider, yOffset, function()
+		return GetPaperDollModelDefaultValue("rotation", 0) or 0
+	end, function(self, value)
+		GetPaperDollModelOptions().rotation = value
+		UpdatePaperDollModelRotationSliderText(self)
+	end, "paperDoll")
+	return slider
+end
+
 function coolstats.RefreshOptionsPanel()
 	local panel = coolstats.optionsPanel
 	if not panel then
@@ -1257,6 +1507,27 @@ function coolstats.RefreshCharacterPanelOptionsPanel()
 			control:SetValue(math.floor(fontSize + 0.5))
 			control.updating = nil
 			UpdateItemLevelFontSizeSliderText(control)
+		elseif control.controlType == "paperDollGemSlider" then
+			local value = tonumber(GetPaperDollGemOptions()[control.optionKey]) or GetPaperDollGemDefaultValue(control.optionKey, 1)
+			if control.valueSuffix == "%" then
+				value = value * 100
+			end
+			control.updating = true
+			control:SetValue(math.floor(value + 0.5))
+			control.updating = nil
+			UpdatePaperDollGemSliderText(control)
+		elseif control.controlType == "modelScoreSlider" then
+			local value = tonumber(GetModelScoreOptions()[control.optionKey]) or GetModelScoreDefaultValue(control.optionKey, 0)
+			control.updating = true
+			control:SetValue(math.floor(value + 0.5))
+			control.updating = nil
+			UpdateModelScoreSliderText(control)
+		elseif control.controlType == "paperDollModelRotation" then
+			local value = tonumber(GetPaperDollModelOptions().rotation) or GetPaperDollModelDefaultValue("rotation", 0)
+			control.updating = true
+			control:SetValue(math.floor(value + 0.5))
+			control.updating = nil
+			UpdatePaperDollModelRotationSliderText(control)
 		elseif control.controlType == "backgroundDropdown" then
 			local options = GetBackgroundGroupOptions(control.groupKey)
 			local textureKey = options.texture or "default"
@@ -1316,6 +1587,9 @@ function coolstats.ResetOptionsPanelDefaults()
 	db.showStatsPanel = defaults.showStatsPanel
 	db.showItemLevels = defaults.showItemLevels
 	db.showSlotBorders = defaults.showSlotBorders
+	db.showPaperDollGems = defaults.showPaperDollGems
+	db.hidePaperDollResistances = defaults.hidePaperDollResistances
+	db.hidePaperDollRotateButtons = defaults.hidePaperDollRotateButtons
 	db.cleanGearScoreTooltips = defaults.cleanGearScoreTooltips
 	db.tooltip = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.tooltip) or {
 		guildRank = true,
@@ -1334,6 +1608,20 @@ function coolstats.ResetOptionsPanelDefaults()
 		position = "default",
 		fontSize = 15,
 		colorMode = "score",
+	}
+	db.paperDollGems = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.paperDollGems) or {
+		size = 14,
+		iconScale = 1,
+		spacing = 7,
+		circleScale = 1,
+		prongScale = 0.82,
+	}
+	db.modelScore = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.modelScore) or {
+		x = 120,
+		y = 30,
+	}
+	db.paperDollModel = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.paperDollModel) or {
+		rotation = 0,
 	}
 	db.lootAlerts = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.lootAlerts) or {
 		enabled = true,
@@ -1361,11 +1649,28 @@ function coolstats.ResetCharacterPanelOptionsPanelDefaults()
 	db.showStatsPanel = defaults.showStatsPanel
 	db.showItemLevels = defaults.showItemLevels
 	db.showSlotBorders = defaults.showSlotBorders
+	db.showPaperDollGems = defaults.showPaperDollGems
+	db.hidePaperDollResistances = defaults.hidePaperDollResistances
+	db.hidePaperDollRotateButtons = defaults.hidePaperDollRotateButtons
 	db.cleanGearScoreTooltips = defaults.cleanGearScoreTooltips
 	db.itemLevelBadges = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.itemLevelBadges) or {
 		position = "default",
 		fontSize = 15,
 		colorMode = "score",
+	}
+	db.paperDollGems = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.paperDollGems) or {
+		size = 14,
+		iconScale = 1,
+		spacing = 7,
+		circleScale = 1,
+		prongScale = 0.82,
+	}
+	db.modelScore = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.modelScore) or {
+		x = 120,
+		y = 30,
+	}
+	db.paperDollModel = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.paperDollModel) or {
+		rotation = 0,
 	}
 	db.backgrounds = coolstats.CopyDefaults and coolstats.CopyDefaults({}, defaults.backgrounds) or {
 		stats = { texture = "default", alpha = 1, contrast = 0, zoom = 1.6, panX = 1, panY = 0, palette = "classic" },
@@ -1977,7 +2282,7 @@ function coolstats.CreateCharacterPanelOptionsPanel()
 	panel.cancel = function() end
 	coolstats.characterPanelOptionsPanel = panel
 
-	local content = CreateScrollableOptionsContent(panel, "coolstatsCharacterPanelOptions", 1120)
+	local content = CreateScrollableOptionsContent(panel, "coolstatsCharacterPanelOptions", 1784)
 
 	local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", content, "TOPLEFT", 16, -16)
@@ -2014,33 +2319,60 @@ function coolstats.CreateCharacterPanelOptionsPanel()
 		GetDB().showSlotBorders = value
 	end, "Color equipment slot borders using the selected Item Levels color mode.", "itemLevels")
 
-	CreateHeading(content, "Item Level Details", -274)
-	CreateItemLevelPositionDropdown(content, "coolstatsCharacterPanelItemLevelPositionDropdown", -300)
-	CreateItemLevelFontSizeSlider(content, "coolstatsCharacterPanelItemLevelFontSizeSlider", -374)
-	CreateHeading(content, "Item Level Colors", -424)
-	CreateCheck(content, "coolstatsCharacterPanelRarityColors", "Use item rarity colors", -456, function()
+	CreateHeading(content, "Paperdoll Gems", -274)
+	CreateCheck(content, "coolstatsCharacterPanelPaperDollGems", "Show paperdoll gems", -300, function()
+		return GetDB() and GetDB().showPaperDollGems
+	end, function(value)
+		GetDB().showPaperDollGems = value
+	end, "Show socketed gem icons around equipped gear slots.", "paperDoll")
+	CreatePaperDollGemSlider(content, "coolstatsCharacterPanelGemSizeSlider", "Gem icon size", -356, "size", 10, 24, 1, "px")
+	CreatePaperDollGemSlider(content, "coolstatsCharacterPanelGemArtSlider", "Gem art size", -420, "iconScale", 60, 115, 5, "%")
+	CreatePaperDollGemSlider(content, "coolstatsCharacterPanelGemSpacingSlider", "Gem slot gap", -484, "spacing", 3, 14, 1, "px")
+	CreatePaperDollGemSlider(content, "coolstatsCharacterPanelGemCircleSlider", "Gem circle size", -548, "circleScale", 75, 145, 5, "%")
+	CreatePaperDollGemSlider(content, "coolstatsCharacterPanelGemProngSlider", "Gem prong size", -612, "prongScale", 55, 125, 5, "%")
+
+	CreateHeading(content, "Model Score Text", -676)
+	CreateModelScoreSlider(content, "coolstatsCharacterPanelModelScoreXSlider", "Horizontal offset", -702, "x", -160, 160)
+	CreateModelScoreSlider(content, "coolstatsCharacterPanelModelScoreYSlider", "Vertical offset", -766, "y", -40, 180)
+	CreatePaperDollModelRotationSlider(content, "coolstatsCharacterPanelModelRotationSlider", -830)
+
+	CreateHeading(content, "Item Level Details", -894)
+	CreateItemLevelPositionDropdown(content, "coolstatsCharacterPanelItemLevelPositionDropdown", -920)
+	CreateItemLevelFontSizeSlider(content, "coolstatsCharacterPanelItemLevelFontSizeSlider", -994)
+	CreateHeading(content, "Item Level Colors", -1044)
+	CreateCheck(content, "coolstatsCharacterPanelRarityColors", "Use item rarity colors", -1076, function()
 		return GetItemLevelBadgeColorMode() == "quality"
 	end, function(value)
 		GetItemLevelBadgeOptions().colorMode = value and "quality" or "score"
 	end, "Switch item-level badge text and slot-border glow from the coolstats GearScore gradient to Blizzard's uncommon, rare, epic, and legendary item colors. GearScore values are still calculated normally.", "itemLevels")
-	CreateDescription(content, "Corner positions automatically render at half the selected font size.", -490)
+	CreateDescription(content, "Corner positions automatically render at half the selected font size.", -1110)
 
-	CreateHeading(content, "Compatibility", -540)
-	CreateCheck(content, "coolstatsCharacterPanelTooltipCleanup", "Clean GearScore tooltip spam", -566, function()
+	CreateHeading(content, "Compatibility", -1160)
+	CreateCheck(content, "coolstatsCharacterPanelHideResistances", "Hide paperdoll resistances", -1186, function()
+		return GetDB() and GetDB().hidePaperDollResistances ~= false
+	end, function(value)
+		GetDB().hidePaperDollResistances = value
+	end, "Hide Blizzard's resistance buttons on the paperdoll. Disable this to show them again.", "paperDoll")
+	CreateCheck(content, "coolstatsCharacterPanelHideRotateButtons", "Hide model rotate buttons", -1214, function()
+		return GetDB() and GetDB().hidePaperDollRotateButtons ~= false
+	end, function(value)
+		GetDB().hidePaperDollRotateButtons = value
+	end, "Hide Blizzard's character model rotation buttons. Disable this to show them again.", "paperDoll")
+	CreateCheck(content, "coolstatsCharacterPanelTooltipCleanup", "Clean GearScore tooltip spam", -1242, function()
 		return GetDB() and GetDB().cleanGearScoreTooltips
 	end, function(value)
 		GetDB().cleanGearScoreTooltips = value
 	end, "Hide noisy GearScore lines from item tooltips.", "character")
 
-	CreateHeading(content, "Side Panel Visuals", -616)
-	CreateDescription(content, "Controls the background texture, opacity, contrast overlay, talent-art zoom, image position, and stat text colors of the coolstats side panel.", -642)
-	CreateBackgroundDropdown(content, "coolstatsCharacterPanelStatsBackgroundDropdown", "Stats panel texture", -678, "stats")
-	CreateBackgroundAlphaSlider(content, "coolstatsCharacterPanelStatsBackgroundAlphaSlider", "Stats panel opacity", -750, "stats")
-	CreateBackgroundContrastSlider(content, "coolstatsCharacterPanelStatsBackgroundContrastSlider", "Stats panel contrast", -814, "stats")
-	CreateBackgroundZoomSlider(content, "coolstatsCharacterPanelStatsBackgroundZoomSlider", "Stats panel zoom", -878, "stats")
-	CreateBackgroundPanSlider(content, "coolstatsCharacterPanelStatsBackgroundPanXSlider", "Image horizontal position", -942, "stats", "panX", "Left", "Right")
-	CreateBackgroundPanSlider(content, "coolstatsCharacterPanelStatsBackgroundPanYSlider", "Image vertical position", -1006, "stats", "panY", "Up", "Down")
-	CreateStatTextPaletteDropdown(content, "coolstatsCharacterPanelStatsTextPaletteDropdown", "Stats text palette", -1070, "stats")
+	CreateHeading(content, "Side Panel Visuals", -1292)
+	CreateDescription(content, "Controls the background texture, opacity, contrast overlay, talent-art zoom, image position, and stat text colors of the coolstats side panel.", -1318)
+	CreateBackgroundDropdown(content, "coolstatsCharacterPanelStatsBackgroundDropdown", "Stats panel texture", -1354, "stats")
+	CreateBackgroundAlphaSlider(content, "coolstatsCharacterPanelStatsBackgroundAlphaSlider", "Stats panel opacity", -1426, "stats")
+	CreateBackgroundContrastSlider(content, "coolstatsCharacterPanelStatsBackgroundContrastSlider", "Stats panel contrast", -1490, "stats")
+	CreateBackgroundZoomSlider(content, "coolstatsCharacterPanelStatsBackgroundZoomSlider", "Stats panel zoom", -1554, "stats")
+	CreateBackgroundPanSlider(content, "coolstatsCharacterPanelStatsBackgroundPanXSlider", "Image horizontal position", -1618, "stats", "panX", "Left", "Right")
+	CreateBackgroundPanSlider(content, "coolstatsCharacterPanelStatsBackgroundPanYSlider", "Image vertical position", -1682, "stats", "panY", "Up", "Down")
+	CreateStatTextPaletteDropdown(content, "coolstatsCharacterPanelStatsTextPaletteDropdown", "Stats text palette", -1746, "stats")
 
 	if InterfaceOptions_AddCategory then
 		InterfaceOptions_AddCategory(panel)

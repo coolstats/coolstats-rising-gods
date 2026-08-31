@@ -88,9 +88,13 @@ $runtimeFiles = @(
 	"coolstats_tooltip.lua"
 )
 
-$runtimeFiles += Get-ChildItem -LiteralPath (Join-Path $publishPath "assets") -File |
+$assetRoot = Join-Path $publishPath "assets"
+$runtimeFiles += Get-ChildItem -LiteralPath $assetRoot -Recurse -File |
 	Where-Object { $_.Extension -match "^\.(blp|ogg)$" } |
-	ForEach-Object { "assets/" + $_.Name }
+	ForEach-Object {
+		$assetRelativePath = $_.FullName.Substring($assetRoot.Length + 1).Replace("\", "/")
+		"assets/" + $assetRelativePath
+	}
 
 foreach ($relativePath in $runtimeFiles | Sort-Object -Unique) {
 	$sourcePath = Join-Path $publishPath ($relativePath.Replace("/", "\"))
